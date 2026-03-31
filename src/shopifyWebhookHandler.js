@@ -206,10 +206,16 @@ async function handleOrderPaid(payload) {
   const orderAmt  = parseFloat(payload.total_price || '0') || 0;
   const newSpent  = `$${(prevSpent + orderAmt).toFixed(2)}`;
 
+  // Fecha de la orden en formato YYYY-MM-DD (hora México)
+  const rawDate    = payload.created_at || payload.processed_at || new Date().toISOString();
+  const fechaCompra = new Date(rawDate)
+    .toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' }); // sv-SE → YYYY-MM-DD
+
   await sheetsService.updateOrderData(customer.rowIndex, {
     totalOrders: String(newOrders),
     totalSpent:  newSpent,
     segmento,
+    fechaCompra,
   });
   await sheetsService.appendTag(customer.rowIndex, tag);
 

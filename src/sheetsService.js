@@ -14,12 +14,13 @@
  *   I (8):  Colonia
  *   J (9):  Total órdenes
  *   K (10): Monto gastado ($)
- *   L (11): Sitio de origen
- *   M (12): Punto de entrada
- *   N (13): Historial de tags
- *   O (14): Fecha primer contacto
- *   P (15): Asesoría LlosaGPT  ← log de conversación del bot
- *   Q (16): Notas
+ *   L (11): Fecha última compra ← YYYY-MM-DD
+ *   M (12): Sitio de origen
+ *   N (13): Punto de entrada
+ *   O (14): Historial de tags
+ *   P (15): Fecha primer contacto
+ *   Q (16): Asesoría LlosaGPT  ← log de conversación del bot
+ *   R (17): Notas
  *
  * "2 Sucursales" (35 sucursales existentes)
  *   A (0): #
@@ -51,23 +52,24 @@ const SHEET_SEGUIM     = '4 Seguimientos 24h';
 
 // Índices columnas Base Maestra (0-indexed)
 const BASE = {
-  SEGMENTO:    0,
-  NOMBRE:      1,
-  EMAIL:       2,
-  TELEFONO:    3,
-  ACE_EMAIL:   4,
-  ACE_WA:      5,
-  ESTADO:      6,
-  CIUDAD:      7,
-  COLONIA:     8,
-  TOTAL_ORD:   9,
-  MONTO:       10,
-  ORIGEN:      11,
-  ENTRADA:     12,
-  TAGS:        13,
-  FECHA_REG:   14,
-  ASESORIA:    15,  // "Asesoría LlosaGPT" — log del bot
-  NOTAS:       16,
+  SEGMENTO:      0,
+  NOMBRE:        1,
+  EMAIL:         2,
+  TELEFONO:      3,
+  ACE_EMAIL:     4,
+  ACE_WA:        5,
+  ESTADO:        6,
+  CIUDAD:        7,
+  COLONIA:       8,
+  TOTAL_ORD:     9,
+  MONTO:         10,
+  FECHA_COMPRA:  11,  // "Fecha última compra" — YYYY-MM-DD
+  ORIGEN:        12,
+  ENTRADA:       13,
+  TAGS:          14,
+  FECHA_REG:     15,
+  ASESORIA:      16,  // "Asesoría LlosaGPT" — log del bot
+  NOTAS:         17,
 };
 
 // Índices columnas Sucursales (0-indexed)
@@ -145,7 +147,7 @@ async function findCustomer(phone) {
     const sheets = await getSheets();
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_BASE}!A:Q`,
+      range: `${SHEET_BASE}!A:R`,
     });
 
     const rows = res.data.values || [];
@@ -188,7 +190,7 @@ async function registerCustomer(data) {
   const now = nowMX();
 
   // Construir fila de 17 columnas (A–Q)
-  const row = Array(17).fill('');
+  const row = Array(18).fill('');
   row[BASE.SEGMENTO]  = data.segmento || 'Lead frío';
   row[BASE.NOMBRE]    = data.name || '';
   row[BASE.EMAIL]     = data.email || '';
@@ -205,7 +207,7 @@ async function registerCustomer(data) {
 
   const res = await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_BASE}!A:Q`,
+    range: `${SHEET_BASE}!A:R`,
     valueInputOption: 'USER_ENTERED',
     resource: { values: [row] },
   });
@@ -260,14 +262,15 @@ async function appendConversationLog(phone, userMsg, botMsg) {
  * @param {number} rowIndex  - Fila 1-based del cliente en la hoja
  * @param {object} fields    - { totalOrders?, totalSpent?, segmento? }
  */
-async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento } = {}) {
+async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fechaCompra } = {}) {
   try {
     const sheets = await getSheets();
     const data   = [];
 
-    if (segmento    !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.SEGMENTO)}${rowIndex}`,  values: [[segmento]]    });
-    if (totalOrders !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.TOTAL_ORD)}${rowIndex}`, values: [[totalOrders]] });
-    if (totalSpent  !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.MONTO)}${rowIndex}`,     values: [[totalSpent]]  });
+    if (segmento    !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.SEGMENTO)}${rowIndex}`,     values: [[segmento]]     });
+    if (totalOrders !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.TOTAL_ORD)}${rowIndex}`,    values: [[totalOrders]]  });
+    if (totalSpent  !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.MONTO)}${rowIndex}`,        values: [[totalSpent]]   });
+    if (fechaCompra !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.FECHA_COMPRA)}${rowIndex}`, values: [[fechaCompra]]  });
 
     if (data.length === 0) return;
 
@@ -357,7 +360,7 @@ async function findCustomerByEmail(email) {
     const sheets = await getSheets();
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_BASE}!A:Q`,
+      range: `${SHEET_BASE}!A:R`,
     });
 
     const rows = res.data.values || [];
