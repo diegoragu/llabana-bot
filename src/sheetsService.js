@@ -128,6 +128,18 @@ function normalizePhone(phone) {
   return n;
 }
 
+/**
+ * Devuelve el teléfono en formato +52XXXXXXXXXX para guardar en Sheets.
+ * Elimina el prefijo whatsapp:, no-dígitos y el código de país 52/521,
+ * luego antepone +52.
+ */
+function formatPhoneForStorage(phone) {
+  let n = (phone || '').replace('whatsapp:', '').replace(/\D/g, '');
+  if (n.startsWith('521') && n.length === 13) n = n.substring(3); // +521XXXXXXXXXX → XXXXXXXXXX
+  else if (n.startsWith('52')  && n.length === 12) n = n.substring(2); // +52XXXXXXXXXX  → XXXXXXXXXX
+  return n ? `+52${n}` : '';
+}
+
 /** Minúsculas, sin acentos, sin caracteres especiales. */
 function normalizeText(text) {
   return (text || '')
@@ -196,7 +208,7 @@ async function registerCustomer(data) {
   row[BASE.SEGMENTO]   = data.segmento || 'Lead frío';
   row[BASE.NOMBRE]     = data.name || '';
   row[BASE.EMAIL]      = data.email || '';
-  row[BASE.TELEFONO]   = (data.phone || '').replace('whatsapp:', '');
+  row[BASE.TELEFONO]   = formatPhoneForStorage(data.phone);
   row[BASE.ACE_WA]     = 'Sí';
   row[BASE.ESTADO]     = data.state;
   row[BASE.CIUDAD]     = data.city;
@@ -204,8 +216,11 @@ async function registerCustomer(data) {
   row[BASE.ORIGEN]     = data.origen  || 'WhatsApp';
   row[BASE.ENTRADA]    = data.origen === 'Shopify' ? 'Shopify' : 'Bot Llabana';
   row[BASE.FECHA_REG]  = now;
-  row[BASE.ASESORIA]   = `[${now}] Canal: ${data.channel} (${data.channelDetail})`;
-  row[BASE.NOTAS]      = data.species ? `Especie: ${data.species}` : '';
+  row[BASE.ASESORIA]   = '';  // se llena durante la conversación por appendConversationLog
+  row[BASE.NOTAS]      = [
+    data.channel ? `Canal: ${data.channel} (${data.channelDetail})` : '',
+    data.species ? `Especie: ${data.species}` : '',
+  ].filter(Boolean).join(' | ');
   row[BASE.ULTIMO_MOV] = nowMXDatetime();
 
   const res = await sheets.spreadsheets.values.append({
