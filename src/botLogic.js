@@ -1,20 +1,24 @@
 /**
- * Lógica central del bot de Llabana.
+ * Lógica central del bot de Llabana — flujo definitivo.
  *
- * Flujo cliente NUEVO:
- *   [primer mensaje]  → greeting + pregunta especie → asking_species
- *   asking_species    → guarda especie, pide nombre  → asking_name
- *   asking_name       → pide estado                  → asking_state
- *   asking_state      → valida México, pide ciudad   → asking_city | out_of_coverage
- *   asking_city       → informa canal (paquetería)   → asking_email
- *   asking_email      → registra en Sheets           → active
+ * Estados para cliente NUEVO (no encontrado por teléfono):
  *
- * Flujo cliente EXISTENTE (encontrado por teléfono):
- *   active → conversación libre con Claude
- *          → escalación a Wig: mayoreo, quejas, enojados
+ *   [primer msg]         → bienvenida + "¿Estás en México?"  → asking_mexico
+ *   asking_mexico        → valida México                      → asking_returning | out_of_coverage
+ *   asking_returning     → ¿ya compró antes?                 → asking_returning_email | asking_profile
+ *   asking_returning_email → busca por email                 → active | asking_profile
+ *   asking_profile       → elige qué busca (4 opciones)     → escalated | asking_state
+ *   asking_state         → pide estado                       → asking_city
+ *   asking_city          → REGISTRA EN SHEETS, informa canal → asking_email
+ *   asking_email         → email opcional, actualiza Sheets  → active
+ *   active               → Claude libre                      → escalated
  *
- * NOTA: Todos los clientes van a paquetería / llabanaenlinea.com por ahora.
- * La lógica de rutas y sucursales se activará después.
+ * Cliente EXISTENTE (encontrado por teléfono):
+ *   → saludo por nombre → active directamente
+ *
+ * Escalación a Wig: mayoreo/grandes cantidades (perfil), quejas, enojados (Claude).
+ * Canal: todos a paquetería / llabanaenlinea.com (rutas/sucursales se activan después).
+ * Teléfono guardado como +52XXXXXXXXXX (sin prefijo whatsapp:).
  */
 
 const sessionManager = require('./sessionManager');
@@ -22,10 +26,32 @@ const sheetsService  = require('./sheetsService');
 const claudeService  = require('./claudeService');
 const twilioService  = require('./twilioService');
 
-// ── Constantes ────────────────────────────────────────────────────────────────
+// ── Constantes y helpers de detección ────────────────────────────────────────
 
+const WELCOME_MSG =
+  '¡Hola! 👋 Soy el asistente de Llabana, tu aliado en alimento balanceado 🌾\n' +
+  '¿Estás en México?';
+
+const OUT_OF_COVERAGE_MSG =
+  'Gracias por escribirnos 🙏 Por ahora solo tenemos entregas en México. ' +
+  'Cuando estés por acá con gusto te ayudamos 🌾';
+
+const PROFILE_MENU =
+  '¿Qué estás buscando?\n\n' +
+  '1️⃣  Comprar 1 o 2 bultos 🛒\n' +
+  '2️⃣  Grandes cantidades 📦\n' +
+  '3️⃣  Mayoreo o reventa 🚛\n' +
+  '4️⃣  Otra consulta ❓';
+
+const CHANNEL_PAQUETERIA = {
+  channel: 'paqueteria',
+  detail:  'Nacional',
+  message: 'Te mandamos por paquetería a todo México 📦 Puedes hacer tu pedido en llabanaenlinea.com',
+};
+
+// Patrones para detectar que está fuera de México
 const OUTSIDE_MEXICO_PATTERNS = [
-  /estados\s*unidos/i, /\busa\b/i, /\bee\.?\s*uu\.?\b/i,
+  /estados\s*unidos/i, /\busa\b/i,       /\bee\.?\s*uu\.?\b/i,
   /\bguatemala\b/i,    /\bcolombia\b/i,  /\bvenezuela\b/i,
   /\bargentina\b/i,    /espa[ñn]a/i,     /canad[aá]/i,
   /\bchile\b/i,        /per[uú]/i,       /\bcuba\b/i,
@@ -34,26 +60,36 @@ const OUTSIDE_MEXICO_PATTERNS = [
   /\bbolivia\b/i,      /\becuador\b/i,   /\buruguay\b/i,
 ];
 
-const SKIP_EMAIL_PATTERNS = [
-  /^no$/i, /^nop$/i, /^nope$/i, /^omitir$/i, /^omite$/i,
-  /^sin correo$/i, /^no tengo$/i, /^no quiero$/i, /^skip$/i,
-  /^da igual$/i, /^no gracias$/i, /^paso$/i, /^ninguno$/i,
-  /^no es necesario$/i,
+// Patrones para detectar que ya es cliente
+const RETURNING_PATTERNS = [
+  /^s[ií]$/i, /\bya\s+compr/i, /\bsoy\s+cliente/i, /\btengo\s+cuenta/i,
+  /\bhe\s+compr/i, /\bcompré\b/i, /\bcompre\b/i, /\bcliente\b/i,
+  /\bya\s+he\b/i, /\bantes\b/i, /\bregistrado\b/i,
 ];
 
-// Canal fijo por ahora — se habilitará lógica de rutas/sucursales después
-const CHANNEL_PAQUETERIA = {
-  channel: 'paqueteria',
-  detail:  'Nacional',
-  message: 'Te mandamos por paquetería a todo México 📦 Puedes hacer tu pedido en llabanaenlinea.com',
-};
+// Patrones para escalación en perfil (mayoreo / grandes cantidades)
+const ESCALATION_PROFILE_PATTERNS = [
+  /^[23]$/, /grandes?\s*cantidad/i, /mayoreo/i, /reventa/i,
+  /revendedor/i, /distribuidor/i, /por\s*mayor/i, /\bal\s*mayor\b/i,
+];
 
-const OUT_OF_COVERAGE_MSG =
-  'Gracias por escribirnos 🙏 Por ahorita solo manejamos entregas en México, ' +
-  'no te podríamos surtir. Cuando estés por acá con gusto te ayudamos 🌾';
+// Patrones para omitir email
+const SKIP_EMAIL_PATTERNS = [
+  /^no$/i, /^nop$/i, /^nope$/i, /^omitir$/i, /^omite$/i, /^sin correo$/i,
+  /^no tengo$/i, /^no quiero$/i, /^skip$/i, /^da igual$/i,
+  /^no gracias$/i, /^paso$/i, /^ninguno$/i, /^no es necesario$/i,
+];
 
 function isOutsideMexico(text) {
-  return OUTSIDE_MEXICO_PATTERNS.some(re => re.test(text));
+  return /^no$/i.test(text.trim()) || OUTSIDE_MEXICO_PATTERNS.some(re => re.test(text));
+}
+
+function isReturningCustomer(text) {
+  return RETURNING_PATTERNS.some(re => re.test(text.trim()));
+}
+
+function isEscalationProfile(text) {
+  return ESCALATION_PROFILE_PATTERNS.some(re => re.test(text.trim()));
 }
 
 function wantsToSkipEmail(text) {
@@ -69,36 +105,39 @@ function isValidEmail(text) {
 async function handleMessage(phone, messageBody) {
   let session = sessionManager.getSession(phone);
 
+  // ── Sesión nueva: buscar cliente por teléfono ─────────────────────────────
   if (!session) {
     session = sessionManager.createSession(phone);
-
     const customer = await sheetsService.findCustomer(phone);
 
     if (customer) {
+      // Cliente existente — saltar todo el onboarding
       sessionManager.updateSession(phone, { flowState: 'active', customer });
-      sheetsService.appendConversationLog(phone, '[inicio sesión]', `Bienvenida enviada a ${customer.name}`).catch(() => {});
+      sheetsService.appendConversationLog(
+        phone, '[inicio sesión]', `Bienvenida enviada a ${customer.name}`
+      ).catch(() => {});
 
-      const nombre = customer.name || '';
-      return nombre
-        ? `¡Hola ${nombre}! 👋 Qué gusto verte de nuevo. ¿En qué te ayudo?`
+      return customer.name
+        ? `¡Hola ${customer.name}! 👋 Qué gusto verte de nuevo. ¿En qué te ayudo?`
         : '¡Hola! 👋 Qué gusto verte de nuevo. ¿En qué te ayudo?';
-    } else {
-      sessionManager.updateSession(phone, { flowState: 'asking_species' });
-      return (
-        '¡Hola! 👋 Soy el asistente de Llabana, alimento balanceado para todo tipo de animales 🌾\n' +
-        '¿Para qué animal estás buscando el alimento? 🐾'
-      );
     }
+
+    // Cliente nuevo — enviar mensaje de bienvenida exacto
+    sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
+    return WELCOME_MSG;
   }
 
+  // ── Rutear por estado ─────────────────────────────────────────────────────
   switch (session.flowState) {
-    case 'asking_species':  return handleAskingSpecies(phone, messageBody, session);
-    case 'asking_name':     return handleAskingName(phone, messageBody, session);
-    case 'asking_state':    return handleAskingState(phone, messageBody, session);
-    case 'asking_city':     return handleAskingCity(phone, messageBody, session);
-    case 'asking_email':    return handleAskingEmail(phone, messageBody, session);
-    case 'active':          return handleActive(phone, messageBody, session);
-    case 'out_of_coverage': return OUT_OF_COVERAGE_MSG;
+    case 'asking_mexico':           return handleAskingMexico(phone, messageBody, session);
+    case 'asking_returning':        return handleAskingReturning(phone, messageBody, session);
+    case 'asking_returning_email':  return handleAskingReturningEmail(phone, messageBody, session);
+    case 'asking_profile':          return handleAskingProfile(phone, messageBody, session);
+    case 'asking_state':            return handleAskingState(phone, messageBody, session);
+    case 'asking_city':             return handleAskingCity(phone, messageBody, session);
+    case 'asking_email':            return handleAskingEmail(phone, messageBody, session);
+    case 'active':                  return handleActive(phone, messageBody, session);
+    case 'out_of_coverage':         return OUT_OF_COVERAGE_MSG;
     case 'escalated':
       return 'Tu mensaje ya fue enviado a un asesor. Pronto te contactan 🤝';
     default:
@@ -107,37 +146,102 @@ async function handleMessage(phone, messageBody) {
   }
 }
 
-// ── Onboarding ────────────────────────────────────────────────────────────────
+// ── Paso 1: Filtro México ─────────────────────────────────────────────────────
 
-async function handleAskingSpecies(phone, message, session) {
-  session.tempData.species = message.trim();
-  sessionManager.updateSession(phone, { flowState: 'asking_name', tempData: session.tempData });
-  return '¿Cómo te llamas?';
+async function handleAskingMexico(phone, message, session) {
+  if (isOutsideMexico(message)) {
+    sessionManager.updateSession(phone, { flowState: 'out_of_coverage' });
+    return OUT_OF_COVERAGE_MSG;
+  }
+  // Respuesta afirmativa o ambigua → asumir México, continuar
+  sessionManager.updateSession(phone, { flowState: 'asking_returning' });
+  return '¿Ya has comprado con nosotros antes o es tu primera vez?';
 }
 
-async function handleAskingName(phone, message, session) {
-  const name = message.trim();
-  if (name.length < 2) return '¿Cómo te llamas?';
+// ── Paso 2: ¿Ya es cliente? ───────────────────────────────────────────────────
 
-  session.tempData.name = capitalize(name);
+async function handleAskingReturning(phone, message, session) {
+  if (isReturningCustomer(message)) {
+    sessionManager.updateSession(phone, { flowState: 'asking_returning_email' });
+    return 'Dame tu correo para buscarte en nuestros registros 📧';
+  }
+  // Primera vez o ambiguo → ir directo al perfil
+  sessionManager.updateSession(phone, { flowState: 'asking_profile' });
+  return PROFILE_MENU;
+}
+
+// ── Paso 2b: Buscar cliente existente por email ───────────────────────────────
+
+async function handleAskingReturningEmail(phone, message, session) {
+  const input = message.trim();
+
+  // Si no quiere dar email → tratar como nuevo
+  if (wantsToSkipEmail(input) || !isValidEmail(input)) {
+    sessionManager.updateSession(phone, { flowState: 'asking_profile' });
+    const nota = isValidEmail(input) ? '' : 'No te encontramos 🙏 No hay problema, te atendemos igual.\n\n';
+    return `${nota}${PROFILE_MENU}`;
+  }
+
+  const email    = input.toLowerCase();
+  const existing = await sheetsService.findCustomerByEmail(email);
+
+  if (existing) {
+    // Cliente encontrado — actualizar teléfono y activar
+    await sheetsService.updateCustomerPhone(existing.rowIndex, phone);
+    sheetsService.appendConversationLog(
+      phone, '[reconocido por email]', `Tel actualizado. Bienvenida a ${existing.name}`
+    ).catch(() => {});
+
+    const customer = {
+      ...existing,
+      phone,
+      channel:       CHANNEL_PAQUETERIA.channel,
+      channelDetail: CHANNEL_PAQUETERIA.detail,
+    };
+    sessionManager.updateSession(phone, { flowState: 'active', customer });
+    console.log(`🔄 Reconocido por email: ${existing.name} (nuevo tel: ${phone})`);
+
+    return `¡Ya te tenemos, ${existing.name}! 👋 ¿En qué te ayudo?`;
+  }
+
+  // No encontrado → tratar como nuevo
+  sessionManager.updateSession(phone, { flowState: 'asking_profile' });
+  return `No te encontramos en nuestros registros 🙏 No hay problema.\n\n${PROFILE_MENU}`;
+}
+
+// ── Paso 3: Perfil ────────────────────────────────────────────────────────────
+
+async function handleAskingProfile(phone, message, session) {
+  if (isEscalationProfile(message)) {
+    // Mayoreo / grandes cantidades → escalar a Wig sin registrar
+    session.tempData.profile = 'mayoreo';
+    sessionManager.updateSession(phone, { flowState: 'escalated', tempData: session.tempData });
+    await notifyWig(phone, session, 'Perfil: mayoreo / grandes cantidades');
+    return 'Ahorita te conecto con un asesor 🙌';
+  }
+
+  // Opción 1 (comprar), 4 (consulta) o ambiguo → continuar flujo
+  const profile = /^4$|consulta|informaci/i.test(message.trim()) ? 'consulta' : 'compra';
+  session.tempData.profile = profile;
   sessionManager.updateSession(phone, { flowState: 'asking_state', tempData: session.tempData });
 
-  return `Qué bueno, ${session.tempData.name}. ¿De qué estado eres?`;
+  return '¿De qué estado eres?';
 }
+
+// ── Paso 4: Ubicación ─────────────────────────────────────────────────────────
 
 async function handleAskingState(phone, message, session) {
   const state = message.trim();
   if (state.length < 2) return '¿De qué estado eres?';
 
-  // Validar cobertura México — si está fuera, NO registrar
-  if (isOutsideMexico(state)) {
+  // Detectar si menciona país extranjero en la respuesta del estado
+  if (OUTSIDE_MEXICO_PATTERNS.some(re => re.test(state))) {
     sessionManager.updateSession(phone, { flowState: 'out_of_coverage' });
     return OUT_OF_COVERAGE_MSG;
   }
 
   session.tempData.state = capitalize(state);
   sessionManager.updateSession(phone, { flowState: 'asking_city', tempData: session.tempData });
-
   return '¿Y de qué ciudad o municipio?';
 }
 
@@ -147,13 +251,19 @@ async function handleAskingCity(phone, message, session) {
 
   session.tempData.city = capitalize(city);
 
-  // Registrar inmediatamente — no esperamos al email para no perder el lead
-  const customerData = buildCustomerData(phone, {
-    name:    session.tempData.name,
-    state:   session.tempData.state,
-    city:    session.tempData.city,
-    species: session.tempData.species,
-  });
+  // ── Registrar en Sheets en cuanto tenemos teléfono + estado + ciudad ──────
+  const customerData = {
+    phone,
+    name:          '',
+    email:         '',
+    state:         session.tempData.state,
+    city:          session.tempData.city,
+    colonia:       '',
+    species:       '',
+    channel:       CHANNEL_PAQUETERIA.channel,
+    channelDetail: CHANNEL_PAQUETERIA.detail,
+    segmento:      'Lead frío',
+  };
 
   let rowIndex = null;
   try {
@@ -162,7 +272,6 @@ async function handleAskingCity(phone, message, session) {
     console.error('Error al registrar cliente en handleAskingCity:', err.message);
   }
 
-  // Guardar customer con rowIndex en sesión para actualizar email después
   sessionManager.updateSession(phone, {
     flowState: 'asking_email',
     customer:  { ...customerData, rowIndex },
@@ -176,20 +285,17 @@ async function handleAskingCity(phone, message, session) {
   );
 }
 
-// ── Email (opcional) ──────────────────────────────────────────────────────────
+// ── Paso 7: Email opcional ────────────────────────────────────────────────────
 
 async function handleAskingEmail(phone, message, session) {
   const input    = message.trim();
-  const customer = session.customer; // ya registrado en handleAskingCity
-  const name     = customer?.name || '';
+  const customer = session.customer;
 
-  // ── Omite email → activar sin cambios ────────────────────────────────────
   if (wantsToSkipEmail(input)) {
     sessionManager.updateSession(phone, { flowState: 'active', tempData: {} });
-    return `Listo ${name}, ya te tenemos. ¿En qué te ayudo?`;
+    return '¡Listo! ¿En qué te ayudo?';
   }
 
-  // ── Email inválido ────────────────────────────────────────────────────────
   if (!isValidEmail(input)) {
     return (
       'Ese correo no se ve bien. ¿Lo revisas?\n' +
@@ -201,8 +307,7 @@ async function handleAskingEmail(phone, message, session) {
   const existing = await sheetsService.findCustomerByEmail(email);
 
   if (existing) {
-    // Email pertenece a un registro previo → cliente conocido con número nuevo.
-    // Eliminar la fila recién creada (duplicado) y actualizar el registro original.
+    // Email pertenece a un registro previo → eliminar duplicado, activar con el original
     if (customer?.rowIndex) {
       sheetsService.deleteCustomerRow(customer.rowIndex).catch(err =>
         console.error('No se pudo eliminar fila duplicada:', err.message)
@@ -218,21 +323,15 @@ async function handleAskingEmail(phone, message, session) {
       phone,
       channel:       CHANNEL_PAQUETERIA.channel,
       channelDetail: CHANNEL_PAQUETERIA.detail,
-      species:       customer?.species || '',
     };
     sessionManager.updateSession(phone, { flowState: 'active', customer: mergedCustomer, tempData: {} });
     console.log(`🔄 Reconocido por email: ${existing.name} (nuevo tel: ${phone})`);
-
-    return (
-      `¡Ya te conocemos, ${existing.name}! 🎉\n` +
-      `${CHANNEL_PAQUETERIA.message}\n\n` +
-      `¿En qué te ayudo?`
-    );
+    return `¡Ya te conocemos, ${existing.name}! 🎉 ¿En qué te ayudo?`;
   }
 
-  // ── Email nuevo → actualizar la fila ya existente ─────────────────────────
+  // Email nuevo → actualizar fila ya creada
   if (customer?.rowIndex) {
-    await sheetsService.updateCustomerEmail(customer.rowIndex, email).catch(err =>
+    sheetsService.updateCustomerEmail(customer.rowIndex, email).catch(err =>
       console.error('Error actualizando email:', err.message)
     );
   }
@@ -242,10 +341,7 @@ async function handleAskingEmail(phone, message, session) {
     tempData:  {},
   });
 
-  return (
-    `Listo ${name}, ya te tenemos. Te avisamos a *${email}*.\n` +
-    `¿En qué te ayudo?`
-  );
+  return `Listo, te avisamos a *${email}*. ¿En qué te ayudo?`;
 }
 
 // ── Conversación libre con Claude ─────────────────────────────────────────────
@@ -263,7 +359,7 @@ async function handleActive(phone, message, session) {
 
   if (response.includes('ESCALAR_A_WIG')) {
     sheetsService.updateSegmento(phone, 'Mayoreo / Reventa').catch(() => {});
-    await notifyWig(phone, session);
+    await notifyWig(phone, session, 'Detectado por Claude: queja o enojo');
     sessionManager.updateSession(phone, { flowState: 'escalated' });
     return 'Ahorita te conecto con un asesor 🙌';
   }
@@ -277,22 +373,7 @@ async function handleActive(phone, message, session) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildCustomerData(phone, { name, state, city, species = '', email = '' }) {
-  return {
-    phone,
-    name,
-    email,
-    state,
-    city,
-    colonia:       '',
-    species,
-    channel:       CHANNEL_PAQUETERIA.channel,
-    channelDetail: CHANNEL_PAQUETERIA.detail,
-    segmento:      'Lead frío',
-  };
-}
-
-async function notifyWig(phone, session) {
+async function notifyWig(phone, session, motivo = '') {
   const wigNumber = process.env.WIG_WHATSAPP_NUMBER;
   if (!wigNumber) {
     console.warn('WIG_WHATSAPP_NUMBER no configurado.');
@@ -300,23 +381,25 @@ async function notifyWig(phone, session) {
   }
 
   const customer   = session.customer || {};
-  const history    = session.conversationHistory.slice(-8);
-  const transcript = history
-    .map(m => `${m.role === 'user' ? '👤' : '🤖'}: ${m.content}`)
-    .join('\n');
+  const tempData   = session.tempData  || {};
+  const history    = (session.conversationHistory || []).slice(-8);
+  const transcript = history.length
+    ? history.map(m => `${m.role === 'user' ? '👤' : '🤖'}: ${m.content}`).join('\n')
+    : '(sin historial previo)';
 
   const msg =
     `🚨 *ESCALACIÓN*\n\n` +
     `📱 Tel:      ${phone}\n` +
-    `👤 Nombre:   ${customer.name    || 'N/D'}\n` +
-    `📍 Ubicación: ${customer.city   || 'N/D'}, ${customer.state || 'N/D'}\n` +
-    `🐾 Especie:  ${customer.species || 'N/D'}\n` +
-    `🏷️ Segmento: ${customer.segmento || 'N/D'}\n\n` +
+    `👤 Nombre:   ${customer.name  || 'N/D'}\n` +
+    `📍 Estado:   ${customer.state || tempData.state || 'N/D'}\n` +
+    `🏙️ Ciudad:  ${customer.city  || tempData.city  || 'N/D'}\n` +
+    `🏷️ Perfil:  ${tempData.profile || customer.segmento || 'N/D'}\n` +
+    `📌 Motivo:   ${motivo}\n\n` +
     `*Conversación:*\n${transcript}`;
 
   try {
     await twilioService.sendMessage(wigNumber, msg);
-    console.log(`📲 Wig notificado — ${phone}`);
+    console.log(`📲 Wig notificado — ${phone} | ${motivo}`);
   } catch (err) {
     console.error('Error notificando a Wig:', err.message);
   }

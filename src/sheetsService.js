@@ -190,9 +190,9 @@ async function registerCustomer(data) {
   // Construir fila de 17 columnas (A–Q)
   const row = Array(17).fill('');
   row[BASE.SEGMENTO]  = data.segmento || 'Lead frío';
-  row[BASE.NOMBRE]    = data.name;
+  row[BASE.NOMBRE]    = data.name || '';
   row[BASE.EMAIL]     = data.email || '';
-  row[BASE.TELEFONO]  = data.phone;
+  row[BASE.TELEFONO]  = (data.phone || '').replace('whatsapp:', '');
   row[BASE.ACE_WA]    = 'Sí';
   row[BASE.ESTADO]    = data.state;
   row[BASE.CIUDAD]    = data.city;
