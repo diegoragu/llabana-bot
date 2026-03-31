@@ -203,14 +203,21 @@ async function registerCustomer(data) {
   row[BASE.ASESORIA]  = `[${now}] Canal: ${data.channel} (${data.channelDetail})`;
   row[BASE.NOTAS]     = data.species ? `Especie: ${data.species}` : '';
 
-  await sheets.spreadsheets.values.append({
+  const res = await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: `${SHEET_BASE}!A:Q`,
     valueInputOption: 'USER_ENTERED',
     resource: { values: [row] },
   });
 
-  console.log(`✅ Cliente registrado: ${data.name} | ${data.phone}`);
+  // Extraer el rowIndex de la respuesta para permitir actualizaciones posteriores
+  // updatedRange tiene formato "1 Base Maestra!A3520:Q3520"
+  const updatedRange = res.data.updates?.updatedRange || '';
+  const match = updatedRange.match(/!A(\d+):/);
+  const rowIndex = match ? parseInt(match[1]) : null;
+
+  console.log(`✅ Cliente registrado: ${data.name} | ${data.phone} | fila ${rowIndex}`);
+  return rowIndex;
 }
 
 /**
@@ -292,6 +299,52 @@ async function updateSegmento(phone, segmento) {
     });
   } catch (err) {
     console.error('sheetsService.updateSegmento error:', err.message);
+  }
+}
+
+// Caché del sheetId numérico (evita una llamada extra a la API por cada delete)
+const _sheetIdCache = {};
+
+async function getNumericSheetId(sheets, sheetName) {
+  if (_sheetIdCache[sheetName] !== undefined) return _sheetIdCache[sheetName];
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+  for (const s of meta.data.sheets) {
+    _sheetIdCache[s.properties.title] = s.properties.sheetId;
+  }
+  return _sheetIdCache[sheetName] ?? null;
+}
+
+/**
+ * Elimina la fila del cliente recién creada cuando se detecta que ya existe
+ * un registro previo con el mismo email (evita duplicados).
+ *
+ * @param {number} rowIndex - Fila 1-based a eliminar
+ */
+async function deleteCustomerRow(rowIndex) {
+  try {
+    const sheets = await getSheets();
+    const sheetId = await getNumericSheetId(sheets, SHEET_BASE);
+    if (sheetId === null) throw new Error(`Sheet "${SHEET_BASE}" no encontrada`);
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      resource: {
+        requests: [{
+          deleteDimension: {
+            range: {
+              sheetId,
+              dimension: 'ROWS',
+              startIndex: rowIndex - 1, // API usa índice 0-based
+              endIndex:   rowIndex,
+            },
+          },
+        }],
+      },
+    });
+    console.log(`🗑️  Fila duplicada ${rowIndex} eliminada de "${SHEET_BASE}"`);
+  } catch (err) {
+    console.error('sheetsService.deleteCustomerRow error:', err.message);
+    throw err;
   }
 }
 
@@ -502,6 +555,7 @@ module.exports = {
   findCustomer,
   findCustomerByEmail,
   registerCustomer,
+  deleteCustomerRow,
   updateCustomerPhone,
   updateCustomerEmail,
   updateOrderData,

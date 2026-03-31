@@ -146,7 +146,28 @@ async function handleAskingCity(phone, message, session) {
   if (city.length < 2) return '¿De qué ciudad o municipio?';
 
   session.tempData.city = capitalize(city);
-  sessionManager.updateSession(phone, { flowState: 'asking_email', tempData: session.tempData });
+
+  // Registrar inmediatamente — no esperamos al email para no perder el lead
+  const customerData = buildCustomerData(phone, {
+    name:    session.tempData.name,
+    state:   session.tempData.state,
+    city:    session.tempData.city,
+    species: session.tempData.species,
+  });
+
+  let rowIndex = null;
+  try {
+    rowIndex = await sheetsService.registerCustomer(customerData);
+  } catch (err) {
+    console.error('Error al registrar cliente en handleAskingCity:', err.message);
+  }
+
+  // Guardar customer con rowIndex en sesión para actualizar email después
+  sessionManager.updateSession(phone, {
+    flowState: 'asking_email',
+    customer:  { ...customerData, rowIndex },
+    tempData:  session.tempData,
+  });
 
   return (
     `${CHANNEL_PAQUETERIA.message}\n\n` +
@@ -158,15 +179,17 @@ async function handleAskingCity(phone, message, session) {
 // ── Email (opcional) ──────────────────────────────────────────────────────────
 
 async function handleAskingEmail(phone, message, session) {
-  const input = message.trim();
-  const { name, state, city, species } = session.tempData;
+  const input    = message.trim();
+  const customer = session.customer; // ya registrado en handleAskingCity
+  const name     = customer?.name || '';
 
+  // ── Omite email → activar sin cambios ────────────────────────────────────
   if (wantsToSkipEmail(input)) {
-    const customerData = buildCustomerData(phone, { name, state, city, species });
-    await registerAndActivate(phone, session, customerData);
+    sessionManager.updateSession(phone, { flowState: 'active', tempData: {} });
     return `Listo ${name}, ya te tenemos. ¿En qué te ayudo?`;
   }
 
+  // ── Email inválido ────────────────────────────────────────────────────────
   if (!isValidEmail(input)) {
     return (
       'Ese correo no se ve bien. ¿Lo revisas?\n' +
@@ -174,16 +197,30 @@ async function handleAskingEmail(phone, message, session) {
     );
   }
 
-  const email = input.toLowerCase();
+  const email    = input.toLowerCase();
   const existing = await sheetsService.findCustomerByEmail(email);
 
   if (existing) {
-    // Cliente reconocido por email con número nuevo
+    // Email pertenece a un registro previo → cliente conocido con número nuevo.
+    // Eliminar la fila recién creada (duplicado) y actualizar el registro original.
+    if (customer?.rowIndex) {
+      sheetsService.deleteCustomerRow(customer.rowIndex).catch(err =>
+        console.error('No se pudo eliminar fila duplicada:', err.message)
+      );
+    }
     await sheetsService.updateCustomerPhone(existing.rowIndex, phone);
-    sheetsService.appendConversationLog(phone, '[reconocido por email]', `Tel actualizado. Bienvenida a ${existing.name}`).catch(() => {});
+    sheetsService.appendConversationLog(
+      phone, '[reconocido por email]', `Tel actualizado. Bienvenida a ${existing.name}`
+    ).catch(() => {});
 
-    const customer = { ...existing, phone, ...CHANNEL_PAQUETERIA, species };
-    sessionManager.updateSession(phone, { flowState: 'active', customer, tempData: {} });
+    const mergedCustomer = {
+      ...existing,
+      phone,
+      channel:       CHANNEL_PAQUETERIA.channel,
+      channelDetail: CHANNEL_PAQUETERIA.detail,
+      species:       customer?.species || '',
+    };
+    sessionManager.updateSession(phone, { flowState: 'active', customer: mergedCustomer, tempData: {} });
     console.log(`🔄 Reconocido por email: ${existing.name} (nuevo tel: ${phone})`);
 
     return (
@@ -193,9 +230,17 @@ async function handleAskingEmail(phone, message, session) {
     );
   }
 
-  // Email nuevo → registrar con email
-  const customerData = buildCustomerData(phone, { name, state, city, species, email });
-  await registerAndActivate(phone, session, customerData);
+  // ── Email nuevo → actualizar la fila ya existente ─────────────────────────
+  if (customer?.rowIndex) {
+    await sheetsService.updateCustomerEmail(customer.rowIndex, email).catch(err =>
+      console.error('Error actualizando email:', err.message)
+    );
+  }
+  sessionManager.updateSession(phone, {
+    flowState: 'active',
+    customer:  { ...customer, email },
+    tempData:  {},
+  });
 
   return (
     `Listo ${name}, ya te tenemos. Te avisamos a *${email}*.\n` +
@@ -245,20 +290,6 @@ function buildCustomerData(phone, { name, state, city, species = '', email = '' 
     channelDetail: CHANNEL_PAQUETERIA.detail,
     segmento:      'Lead frío',
   };
-}
-
-async function registerAndActivate(phone, session, customerData) {
-  try {
-    await sheetsService.registerCustomer(customerData);
-  } catch (err) {
-    console.error('Error al registrar cliente:', err.message);
-  }
-
-  sessionManager.updateSession(phone, {
-    flowState: 'active',
-    customer:  customerData,
-    tempData:  {},
-  });
 }
 
 async function notifyWig(phone, session) {
