@@ -87,6 +87,7 @@ async function shopifyWebhookHandler(req, res) {
 // ── Evento: customers/create ──────────────────────────────────────────────────
 
 async function handleCustomerCreate(payload) {
+  console.log('SHOPIFY CUSTOMER PAYLOAD:', JSON.stringify(payload, null, 2));
   const email = payload.email;
   if (!email) {
     console.log('   customers/create sin email, omitiendo');
