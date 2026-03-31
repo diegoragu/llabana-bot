@@ -235,7 +235,7 @@ async function appendConversationLog(phone, userMsg, botMsg) {
 
     const sheets = await getSheets();
     const now = nowMX();
-    const col = columnLetter(BASE.ASESORIA); // P
+    const col = columnLetter(BASE.ASESORIA); // Q
 
     // Leer contenido actual de la celda
     const res = await sheets.spreadsheets.values.get({
@@ -425,34 +425,55 @@ async function updateCustomerPhone(rowIndex, phone) {
   }
 }
 
+// Tags válidos — solo estos valores pueden guardarse en Historial de tags
+const VALID_TAGS = new Set(['Creo cuenta', 'Carrito abandonado', 'Compro', 'Recompra', 'newsletter']);
+
+// Detecta cadenas que parecen fechas (YYYY-MM-DD, DD/MM/YYYY, YYYY-MM-DD HH:MM, etc.)
+const DATE_LIKE = /^\d{2,4}[-/]\d{2}[-/\d]/;
+
 /**
- * Agrega un tag al historial de tags (columna N) si no está ya presente.
+ * Agrega un tag al historial de tags (columna O) si no está ya presente.
  * Formato: "Creo cuenta, Carrito abandonado, Compro" (separados por coma).
+ * - Valida que `tag` sea un valor conocido antes de escribir.
+ * - Filtra fechas u otros valores inválidos que pudieran haber quedado en la columna.
+ * - Siempre actualiza Último movimiento, aunque el tag ya exista.
  */
 async function appendTag(rowIndex, tag) {
+  // Rechazar cualquier valor que no sea un tag conocido (evita fechas u otros datos)
+  if (!VALID_TAGS.has(tag)) {
+    console.warn(`appendTag: valor inválido ignorado — "${tag}" no es un tag reconocido`);
+    return;
+  }
+
   try {
     const sheets = await getSheets();
-    const col = columnLetter(BASE.TAGS); // N
+    const col = columnLetter(BASE.TAGS); // O
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `${SHEET_BASE}!${col}${rowIndex}`,
     });
     const existing = res.data.values?.[0]?.[0] || '';
-    const tags = existing ? existing.split(',').map(t => t.trim()) : [];
 
-    if (tags.includes(tag)) return; // ya está
+    // Limpiar valores históricos que parezcan fechas o no sean tags válidos
+    const tags = existing
+      ? existing.split(',').map(t => t.trim()).filter(t => t && VALID_TAGS.has(t) && !DATE_LIKE.test(t))
+      : [];
 
-    tags.push(tag);
+    const alreadyExists = tags.includes(tag);
+    if (!alreadyExists) tags.push(tag);
+
+    // Siempre actualizar ULTIMO_MOV; solo reescribir TAGS si hubo cambio
+    const batchData = [
+      { range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${rowIndex}`, values: [[nowMXDatetime()]] },
+    ];
+    if (!alreadyExists) {
+      batchData.push({ range: `${SHEET_BASE}!${col}${rowIndex}`, values: [[tags.join(', ')]] });
+    }
+
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
-      resource: {
-        valueInputOption: 'USER_ENTERED',
-        data: [
-          { range: `${SHEET_BASE}!${col}${rowIndex}`,                                    values: [[tags.join(', ')]] },
-          { range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${rowIndex}`,           values: [[nowMXDatetime()]] },
-        ],
-      },
+      resource: { valueInputOption: 'USER_ENTERED', data: batchData },
     });
   } catch (err) {
     console.error('sheetsService.appendTag error:', err.message);
