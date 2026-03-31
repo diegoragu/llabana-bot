@@ -409,6 +409,54 @@ async function updateCustomerPhone(rowIndex, phone) {
 }
 
 /**
+ * Agrega un tag al historial de tags (columna N) si no está ya presente.
+ * Formato: "Creo cuenta, Carrito abandonado, Compro" (separados por coma).
+ */
+async function appendTag(rowIndex, tag) {
+  try {
+    const sheets = await getSheets();
+    const col = columnLetter(BASE.TAGS); // N
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET_BASE}!${col}${rowIndex}`,
+    });
+    const existing = res.data.values?.[0]?.[0] || '';
+    const tags = existing ? existing.split(',').map(t => t.trim()) : [];
+
+    if (tags.includes(tag)) return; // ya está
+
+    tags.push(tag);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET_BASE}!${col}${rowIndex}`,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: [[tags.join(', ')]] },
+    });
+  } catch (err) {
+    console.error('sheetsService.appendTag error:', err.message);
+  }
+}
+
+/**
+ * Actualiza "Acepta email mkt" (columna E) de una fila.
+ * Valor típico: 'SI' o 'NO'.
+ */
+async function updateEmailMarketing(rowIndex, value) {
+  try {
+    const sheets = await getSheets();
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET_BASE}!${columnLetter(BASE.ACE_EMAIL)}${rowIndex}`,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: [[value]] },
+    });
+  } catch (err) {
+    console.error('sheetsService.updateEmailMarketing error:', err.message);
+  }
+}
+
+/**
  * Actualiza el email (columna C) de una fila existente.
  * Usado cuando un cliente nuevo proporciona su email al final del onboarding.
  */
@@ -561,6 +609,8 @@ module.exports = {
   updateOrderData,
   appendConversationLog,
   updateSegmento,
+  appendTag,
+  updateEmailMarketing,
   findCityInSucursales,
   findColoniaInRutas,
   addSeguimiento,
