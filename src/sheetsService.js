@@ -21,6 +21,7 @@
  *   P (15): Fecha primer contacto
  *   Q (16): Asesoría LlosaGPT  ← log de conversación del bot
  *   R (17): Notas
+ *   S (18): Último movimiento  ← YYYY-MM-DD HH:MM (auto)
  *
  * "2 Sucursales" (35 sucursales existentes)
  *   A (0): #
@@ -70,6 +71,7 @@ const BASE = {
   FECHA_REG:     15,
   ASESORIA:      16,  // "Asesoría LlosaGPT" — log del bot
   NOTAS:         17,
+  ULTIMO_MOV:    18,  // "Último movimiento" — YYYY-MM-DD HH:MM (auto)
 };
 
 // Índices columnas Sucursales (0-indexed)
@@ -147,7 +149,7 @@ async function findCustomer(phone) {
     const sheets = await getSheets();
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_BASE}!A:R`,
+      range: `${SHEET_BASE}!A:S`,
     });
 
     const rows = res.data.values || [];
@@ -189,25 +191,26 @@ async function registerCustomer(data) {
   const sheets = await getSheets();
   const now = nowMX();
 
-  // Construir fila de 17 columnas (A–Q)
-  const row = Array(18).fill('');
-  row[BASE.SEGMENTO]  = data.segmento || 'Lead frío';
-  row[BASE.NOMBRE]    = data.name || '';
-  row[BASE.EMAIL]     = data.email || '';
-  row[BASE.TELEFONO]  = (data.phone || '').replace('whatsapp:', '');
-  row[BASE.ACE_WA]    = 'Sí';
-  row[BASE.ESTADO]    = data.state;
-  row[BASE.CIUDAD]    = data.city;
-  row[BASE.COLONIA]   = data.colonia;
-  row[BASE.ORIGEN]    = data.origen  || 'WhatsApp';
-  row[BASE.ENTRADA]   = data.origen === 'Shopify' ? 'Shopify' : 'Bot Llabana';
-  row[BASE.FECHA_REG] = now;
-  row[BASE.ASESORIA]  = `[${now}] Canal: ${data.channel} (${data.channelDetail})`;
-  row[BASE.NOTAS]     = data.species ? `Especie: ${data.species}` : '';
+  // Construir fila de 19 columnas (A–S)
+  const row = Array(19).fill('');
+  row[BASE.SEGMENTO]   = data.segmento || 'Lead frío';
+  row[BASE.NOMBRE]     = data.name || '';
+  row[BASE.EMAIL]      = data.email || '';
+  row[BASE.TELEFONO]   = (data.phone || '').replace('whatsapp:', '');
+  row[BASE.ACE_WA]     = 'Sí';
+  row[BASE.ESTADO]     = data.state;
+  row[BASE.CIUDAD]     = data.city;
+  row[BASE.COLONIA]    = data.colonia;
+  row[BASE.ORIGEN]     = data.origen  || 'WhatsApp';
+  row[BASE.ENTRADA]    = data.origen === 'Shopify' ? 'Shopify' : 'Bot Llabana';
+  row[BASE.FECHA_REG]  = now;
+  row[BASE.ASESORIA]   = `[${now}] Canal: ${data.channel} (${data.channelDetail})`;
+  row[BASE.NOTAS]      = data.species ? `Especie: ${data.species}` : '';
+  row[BASE.ULTIMO_MOV] = nowMXDatetime();
 
   const res = await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_BASE}!A:R`,
+    range: `${SHEET_BASE}!A:S`,
     valueInputOption: 'USER_ENTERED',
     resource: { values: [row] },
   });
@@ -243,11 +246,15 @@ async function appendConversationLog(phone, userMsg, botMsg) {
     const newEntry = `[${now}] Cliente: ${userMsg} | Bot: ${botMsg}`;
     const updated  = existing ? `${existing}\n${newEntry}` : newEntry;
 
-    await sheets.spreadsheets.values.update({
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_BASE}!${col}${customer.rowIndex}`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: [[updated]] },
+      resource: {
+        valueInputOption: 'USER_ENTERED',
+        data: [
+          { range: `${SHEET_BASE}!${col}${customer.rowIndex}`,                                         values: [[updated]]          },
+          { range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${customer.rowIndex}`,               values: [[nowMXDatetime()]]  },
+        ],
+      },
     });
   } catch (err) {
     console.error('sheetsService.appendConversationLog error:', err.message);
@@ -271,8 +278,7 @@ async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fe
     if (totalOrders !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.TOTAL_ORD)}${rowIndex}`,    values: [[totalOrders]]  });
     if (totalSpent  !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.MONTO)}${rowIndex}`,        values: [[totalSpent]]   });
     if (fechaCompra !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.FECHA_COMPRA)}${rowIndex}`, values: [[fechaCompra]]  });
-
-    if (data.length === 0) return;
+    data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${rowIndex}`, values: [[nowMXDatetime()]] });
 
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
@@ -294,11 +300,15 @@ async function updateSegmento(phone, segmento) {
     if (!customer) return;
 
     const sheets = await getSheets();
-    await sheets.spreadsheets.values.update({
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_BASE}!A${customer.rowIndex}`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: [[segmento]] },
+      resource: {
+        valueInputOption: 'USER_ENTERED',
+        data: [
+          { range: `${SHEET_BASE}!A${customer.rowIndex}`,                                          values: [[segmento]]         },
+          { range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${customer.rowIndex}`,           values: [[nowMXDatetime()]]  },
+        ],
+      },
     });
   } catch (err) {
     console.error('sheetsService.updateSegmento error:', err.message);
@@ -360,7 +370,7 @@ async function findCustomerByEmail(email) {
     const sheets = await getSheets();
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_BASE}!A:R`,
+      range: `${SHEET_BASE}!A:S`,
     });
 
     const rows = res.data.values || [];
@@ -400,11 +410,15 @@ async function findCustomerByEmail(email) {
 async function updateCustomerPhone(rowIndex, phone) {
   try {
     const sheets = await getSheets();
-    await sheets.spreadsheets.values.update({
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_BASE}!${columnLetter(BASE.TELEFONO)}${rowIndex}`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: [[phone]] },
+      resource: {
+        valueInputOption: 'USER_ENTERED',
+        data: [
+          { range: `${SHEET_BASE}!${columnLetter(BASE.TELEFONO)}${rowIndex}`,    values: [[phone]]           },
+          { range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${rowIndex}`,  values: [[nowMXDatetime()]] },
+        ],
+      },
     });
   } catch (err) {
     console.error('sheetsService.updateCustomerPhone error:', err.message);
@@ -430,11 +444,15 @@ async function appendTag(rowIndex, tag) {
     if (tags.includes(tag)) return; // ya está
 
     tags.push(tag);
-    await sheets.spreadsheets.values.update({
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_BASE}!${col}${rowIndex}`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: [[tags.join(', ')]] },
+      resource: {
+        valueInputOption: 'USER_ENTERED',
+        data: [
+          { range: `${SHEET_BASE}!${col}${rowIndex}`,                                    values: [[tags.join(', ')]] },
+          { range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${rowIndex}`,           values: [[nowMXDatetime()]] },
+        ],
+      },
     });
   } catch (err) {
     console.error('sheetsService.appendTag error:', err.message);
@@ -448,11 +466,15 @@ async function appendTag(rowIndex, tag) {
 async function updateEmailMarketing(rowIndex, value) {
   try {
     const sheets = await getSheets();
-    await sheets.spreadsheets.values.update({
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_BASE}!${columnLetter(BASE.ACE_EMAIL)}${rowIndex}`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: [[value]] },
+      resource: {
+        valueInputOption: 'USER_ENTERED',
+        data: [
+          { range: `${SHEET_BASE}!${columnLetter(BASE.ACE_EMAIL)}${rowIndex}`,   values: [[value]]           },
+          { range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${rowIndex}`,  values: [[nowMXDatetime()]] },
+        ],
+      },
     });
   } catch (err) {
     console.error('sheetsService.updateEmailMarketing error:', err.message);
@@ -466,11 +488,15 @@ async function updateEmailMarketing(rowIndex, value) {
 async function updateCustomerEmail(rowIndex, email) {
   try {
     const sheets = await getSheets();
-    await sheets.spreadsheets.values.update({
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_BASE}!${columnLetter(BASE.EMAIL)}${rowIndex}`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: [[email]] },
+      resource: {
+        valueInputOption: 'USER_ENTERED',
+        data: [
+          { range: `${SHEET_BASE}!${columnLetter(BASE.EMAIL)}${rowIndex}`,       values: [[email]]           },
+          { range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${rowIndex}`,  values: [[nowMXDatetime()]] },
+        ],
+      },
     });
   } catch (err) {
     console.error('sheetsService.updateCustomerEmail error:', err.message);
@@ -589,6 +615,14 @@ function nowMX() {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
+}
+
+/** Retorna fecha y hora actual en México con formato YYYY-MM-DD HH:MM. */
+function nowMXDatetime() {
+  // sv-SE produce "YYYY-MM-DD HH:MM:SS"; tomamos los primeros 16 caracteres
+  return new Date()
+    .toLocaleString('sv-SE', { timeZone: 'America/Mexico_City' })
+    .substring(0, 16);
 }
 
 /** Convierte índice de columna (0-based) a letra. 0→A, 15→P, etc. */

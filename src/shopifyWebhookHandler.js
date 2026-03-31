@@ -107,7 +107,9 @@ async function handleCustomerCreate(payload) {
   }
 
   // Cliente nuevo → registrar fila
-  const name  = [payload.first_name, payload.last_name].filter(Boolean).join(' ') || '';
+  const firstName = (payload.first_name || '').trim();
+  const lastName  = (payload.last_name  || '').trim();
+  const name      = lastName ? `${firstName} ${lastName}` : firstName;
   const state = payload.default_address?.province || '';
   const city  = payload.default_address?.city     || '';
   const phone = payload.phone || '';
