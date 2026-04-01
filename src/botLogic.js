@@ -312,6 +312,15 @@ async function handleAskingIntent(phone, message, session) {
 
 // ── Paso 5: Ubicación ─────────────────────────────────────────────────────────
 
+// TODO: reemplazar con búsqueda en pestaña "3 Rutas Reparto" cuando esté disponible
+const CDMX_PATTERN   = /^(ciudad\s+de\s+m[eé]xico|cdmx|df)$/i;
+const EDOMEX_PATTERN = /^(estado\s+de\s+m[eé]xico|edomex|edo\.?\s*m[eé]x\.?)$/i;
+
+function isLocalDeliveryZone(state) {
+  const s = (state || '').trim();
+  return CDMX_PATTERN.test(s) || EDOMEX_PATTERN.test(s);
+}
+
 async function handleAskingState(phone, message, session) {
   const state = message.trim();
   if (state.length < 2) return '¿De qué estado eres?';
@@ -359,10 +368,29 @@ async function handleAskingCity(phone, message, session) {
     }).catch(() => {});
   }
 
+  // Actualizar sesión con los datos del cliente (necesario antes de notifyWig)
+  const updatedSession = {
+    ...session,
+    customer: { ...customerData, rowIndex },
+    tempData: { ...session.tempData, city: customerData.city },
+  };
+
+  // TODO: reemplazar con búsqueda en pestaña "3 Rutas Reparto" cuando esté disponible
+  if (isLocalDeliveryZone(session.tempData.state)) {
+    sessionManager.updateSession(phone, {
+      flowState: 'waiting_for_wig',
+      customer:  updatedSession.customer,
+      tempData:  {},
+    });
+    await notifyWig(phone, updatedSession,
+      `Zona local (${session.tempData.state} / ${customerData.city}): requiere coordinar entrega`);
+    return 'Ahorita te conecto con un asesor para coordinar tu entrega 🙌';
+  }
+
   const firstName = primerNombre(customerData.name);
   sessionManager.updateSession(phone, {
     flowState: 'active',
-    customer:  { ...customerData, rowIndex },
+    customer:  updatedSession.customer,
     tempData:  {},
   });
 
