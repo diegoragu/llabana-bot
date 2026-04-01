@@ -209,7 +209,7 @@ async function registerCustomer(data) {
   row[BASE.NOMBRE]     = data.name || '';
   row[BASE.EMAIL]      = data.email || '';
   row[BASE.TELEFONO]   = formatPhoneForStorage(data.phone);
-  row[BASE.ACE_WA]     = 'Sí';
+  row[BASE.ACE_WA]     = data.aceWa || '';
   row[BASE.ESTADO]     = data.state;
   row[BASE.CIUDAD]     = data.city;
   row[BASE.CP]         = data.cp;

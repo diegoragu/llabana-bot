@@ -263,6 +263,7 @@ async function handleAskingCity(phone, message, session) {
     channel:       CHANNEL_PAQUETERIA.channel,
     channelDetail: CHANNEL_PAQUETERIA.detail,
     segmento:      'Lead frío',
+    aceWa:         'SI',
   };
 
   let rowIndex = null;
