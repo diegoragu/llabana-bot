@@ -134,10 +134,10 @@ function normalizePhone(phone) {
  * luego antepone +52.
  */
 function formatPhoneForStorage(phone) {
-  let n = (phone || '').replace('whatsapp:', '').replace(/\D/g, '');
+  let n = (phone || '').replace(/^whatsapp:/i, '').replace(/\D/g, '');
   if (n.startsWith('521') && n.length === 13) n = n.substring(3); // +521XXXXXXXXXX → XXXXXXXXXX
   else if (n.startsWith('52')  && n.length === 12) n = n.substring(2); // +52XXXXXXXXXX  → XXXXXXXXXX
-  return n ? `'+52${n}` : '';
+  return n ? `'+52${n}` : ''; // Prefijo ' fuerza formato texto en Google Sheets
 }
 
 /**
@@ -155,7 +155,8 @@ function limpiarNombre(nombre) {
   // Parece un email
   if (n.includes('@') || /\.com\b/i.test(n)) return '';
 
-  // Quitar prefijo "Con " (checkout de invitado en Shopify)
+  // Quitar prefijo "Con " (Shopify lo genera en checkouts de invitado)
+  // Ejemplo: "Con Diego Ramirez" → "Diego Ramirez"
   n = n.replace(/^con\s+/i, '').trim();
   if (!n) return '';
 
@@ -166,8 +167,8 @@ function limpiarNombre(nombre) {
   // Solo dígitos
   if (/^\d+$/.test(n)) return '';
 
-  // Capitalizar cada palabra
-  return n.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  // Capitalizar cada palabra (lowercase primero para normalizar mayúsculas mezcladas)
+  return n.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 }
 
 /** Minúsculas, sin acentos, sin caracteres especiales. */

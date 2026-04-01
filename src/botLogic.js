@@ -11,7 +11,7 @@
  *   asking_intent          → pregunta abierta; Claude clasifica    → escalated | asking_state
  *   asking_state           → pide estado                          → asking_city
  *   asking_city            → REGISTRA EN SHEETS, informa canal    → active
- *   active                 → Claude libre                          → escalated
+ *   active                 → Claude libre                          → waiting_for_wig
  *
  * Cliente EXISTENTE (encontrado por teléfono):
  *   → saludo por nombre → active directamente
@@ -152,6 +152,8 @@ async function handleMessage(phone, messageBody) {
     case 'out_of_coverage':
       sessionManager.deleteSession(phone);
       return OUT_OF_COVERAGE_MSG;
+    case 'waiting_for_wig':
+      return 'Ya avisamos a un asesor, en breve te contacta 🙌 ¿Hay algo más en lo que te pueda ayudar mientras tanto?';
     case 'escalated':
       return 'Tu mensaje ya fue enviado a un asesor. Pronto te contactan 🤝';
     default:
@@ -263,8 +265,8 @@ async function handleAskingIntent(phone, message, session) {
 
   // Escalación: mayoreo, reventa, grandes cantidades o solicitud de humano
   if (isEscalationProfile(message) || isRequestingHuman(message)) {
-    sessionManager.updateSession(phone, { flowState: 'escalated' });
     await notifyWig(phone, session, `Consulta inicial: "${intent}"`);
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
     return 'Ahorita te conecto con un asesor 🙌';
   }
 
@@ -348,7 +350,7 @@ async function handleActive(phone, message, session) {
   // Detección rápida: cliente pide hablar con un asesor/humano
   if (isRequestingHuman(message)) {
     await notifyWig(phone, session, 'Cliente solicita hablar con un asesor');
-    sessionManager.updateSession(phone, { flowState: 'escalated' });
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
     return 'Ahorita te conecto con un asesor 🙌';
   }
 
@@ -365,7 +367,7 @@ async function handleActive(phone, message, session) {
   if (response.includes('ESCALAR_A_WIG')) {
     sheetsService.updateSegmento(phone, 'Mayoreo / Reventa').catch(() => {});
     await notifyWig(phone, session, 'Detectado por Claude: queja o enojo');
-    sessionManager.updateSession(phone, { flowState: 'escalated' });
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
     return 'Ahorita te conecto con un asesor 🙌';
   }
 
