@@ -3,8 +3,8 @@
  * Endpoint: POST /webhook/shopify
  *
  * Eventos manejados (header x-shopify-topic):
- *   customers/create  → registra o actualiza cliente; agrega tag "Creo cuenta"
- *   customers/update  → si accepts_marketing pasó a true, marca "Acepta email mkt" = SI
+ *   customers/create  → registra o actualiza cliente; agrega tag "Solo cuenta"
+ *   customers/update  → si accepts_marketing pasó a true, marca "Acepta email mkt" = SI; actualiza nombre si incompleto
  *   checkouts/create  → segmento "Carrito abandonado" + tag; nunca sobreescribe Comprador/Recompra
  *   orders/paid       → segmento "Comprador"/"Recompra", actualiza órdenes, monto y tags
  *
@@ -85,6 +85,19 @@ async function shopifyWebhookHandler(req, res) {
   }
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Limpia el nombre que viene de Shopify.
+ * Shopify a veces rellena first_name con "Con <Nombre>" cuando el checkout
+ * es de invitado; en ese caso se extrae solo la parte después de "Con ".
+ */
+function cleanName(first, last) {
+  let name = `${(first || '').trim()} ${(last || '').trim()}`.trim();
+  if (/^con\s+/i.test(name)) name = name.replace(/^con\s+/i, '').trim();
+  return name;
+}
+
 // ── Evento: customers/create ──────────────────────────────────────────────────
 
 async function handleCustomerCreate(payload) {
@@ -99,7 +112,7 @@ async function handleCustomerCreate(payload) {
 
   if (existing) {
     // Cliente ya existe → solo agregar tag y actualizar marketing si aplica
-    await sheetsService.appendTag(existing.rowIndex, 'Creo cuenta');
+    await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
     if (acceptsMarketing) {
       await sheetsService.updateEmailMarketing(existing.rowIndex, 'SI');
     }
@@ -113,9 +126,7 @@ async function handleCustomerCreate(payload) {
   }
 
   // Cliente nuevo → registrar fila
-  const firstName = (payload.first_name || '').trim();
-  const lastName  = (payload.last_name  || '').trim();
-  const name      = lastName ? `${firstName} ${lastName}` : firstName;
+  const name = cleanName(payload.first_name, payload.last_name);
   const state = payload.default_address?.province || '';
   const city  = payload.default_address?.city     || '';
   const phone = payload.phone || '';
@@ -135,7 +146,7 @@ async function handleCustomerCreate(payload) {
   });
 
   if (rowIndex) {
-    await sheetsService.appendTag(rowIndex, 'Creo cuenta');
+    await sheetsService.appendTag(rowIndex, 'Solo cuenta');
     if (acceptsMarketing) {
       await sheetsService.updateEmailMarketing(rowIndex, 'SI');
     }
@@ -150,8 +161,10 @@ async function handleCustomerUpdate(payload) {
   const email = payload.email;
   if (!email) return;
 
-  // Solo nos interesa cuando accepts_marketing pasa a true
-  if (!payload.accepts_marketing) return;
+  // Nos interesa si cambia accepts_marketing o si podemos mejorar el nombre
+  const hasMarketingChange = !!payload.accepts_marketing;
+  const hasFirstName       = !!(payload.first_name || '').trim();
+  if (!hasMarketingChange && !hasFirstName) return;
 
   const existing = await sheetsService.findCustomerByEmail(email);
   if (!existing) {
@@ -159,8 +172,21 @@ async function handleCustomerUpdate(payload) {
     return;
   }
 
-  await sheetsService.updateEmailMarketing(existing.rowIndex, 'SI');
-  console.log(`   ✅ customers/update: ${email} → Acepta email mkt = SI`);
+  if (hasMarketingChange) {
+    await sheetsService.updateEmailMarketing(existing.rowIndex, 'SI');
+  }
+
+  // Actualizar nombre si el actual está vacío o tiene solo 1 palabra
+  if (hasFirstName) {
+    const currentName = (existing.name || '').trim();
+    const nameWords   = currentName.split(/\s+/).filter(Boolean).length;
+    if (nameWords <= 1) {
+      const newName = cleanName(payload.first_name, payload.last_name);
+      if (newName) await sheetsService.updateOrderData(existing.rowIndex, { name: newName });
+    }
+  }
+
+  console.log(`   ✅ customers/update: ${email} → mkt=${hasMarketingChange} nombre actualizado=${hasFirstName}`);
 }
 
 // ── Evento: checkouts/create (carrito abandonado) ─────────────────────────────
@@ -231,7 +257,7 @@ async function handleOrderPaid(payload) {
     const currentName = (customer.name || '').trim();
     const nameWords   = currentName.split(/\s+/).filter(Boolean).length;
     if (nameWords <= 1) {
-      const shippingName = `${(shipping.first_name || '').trim()} ${(shipping.last_name || '').trim()}`.trim();
+      const shippingName = cleanName(shipping.first_name, shipping.last_name);
       if (shippingName) updateFields.name = shippingName;
     }
     if (shipping.province) updateFields.state = shipping.province;

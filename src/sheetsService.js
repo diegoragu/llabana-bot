@@ -446,7 +446,7 @@ async function updateCustomerPhone(rowIndex, phone) {
 }
 
 // Tags válidos — solo estos valores pueden guardarse en Historial de tags
-const VALID_TAGS = new Set(['Creo cuenta', 'Carrito abandonado', 'Compro', 'Recompra', 'newsletter']);
+const VALID_TAGS = new Set(['Solo cuenta', 'Carrito abandonado', 'Compro', 'Recompra', 'newsletter']);
 
 // Detecta cadenas que parecen fechas (YYYY-MM-DD, DD/MM/YYYY, YYYY-MM-DD HH:MM, etc.)
 const DATE_LIKE = /^\d{2,4}[-/]\d{2}[-/\d]/;
