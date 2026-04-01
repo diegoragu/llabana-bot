@@ -16,7 +16,7 @@
 
 const crypto = require('crypto');
 const sheetsService = require('./sheetsService');
-const { formatPhoneForStorage } = sheetsService;
+const { formatPhoneForStorage, limpiarNombre } = sheetsService;
 
 // ── Verificación HMAC ─────────────────────────────────────────────────────────
 
@@ -85,19 +85,6 @@ async function shopifyWebhookHandler(req, res) {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Limpia el nombre que viene de Shopify.
- * Shopify a veces rellena first_name con "Con <Nombre>" cuando el checkout
- * es de invitado; en ese caso se extrae solo la parte después de "Con ".
- */
-function cleanName(first, last) {
-  let name = `${(first || '').trim()} ${(last || '').trim()}`.trim();
-  if (/^con\s+/i.test(name)) name = name.replace(/^con\s+/i, '').trim();
-  return name;
-}
-
 // ── Evento: customers/create ──────────────────────────────────────────────────
 
 async function handleCustomerCreate(payload) {
@@ -126,7 +113,7 @@ async function handleCustomerCreate(payload) {
   }
 
   // Cliente nuevo → registrar fila
-  const name = cleanName(payload.first_name, payload.last_name);
+  const name = limpiarNombre(`${(payload.first_name || '').trim()} ${(payload.last_name || '').trim()}`);
   const state = payload.default_address?.province || '';
   const city  = payload.default_address?.city     || '';
   const phone = payload.phone || '';
@@ -181,7 +168,7 @@ async function handleCustomerUpdate(payload) {
     const currentName = (existing.name || '').trim();
     const nameWords   = currentName.split(/\s+/).filter(Boolean).length;
     if (nameWords <= 1) {
-      const newName = cleanName(payload.first_name, payload.last_name);
+      const newName = limpiarNombre(`${(payload.first_name || '').trim()} ${(payload.last_name || '').trim()}`);
       if (newName) await sheetsService.updateOrderData(existing.rowIndex, { name: newName });
     }
   }
@@ -257,7 +244,7 @@ async function handleOrderPaid(payload) {
     const currentName = (customer.name || '').trim();
     const nameWords   = currentName.split(/\s+/).filter(Boolean).length;
     if (nameWords <= 1) {
-      const shippingName = cleanName(shipping.first_name, shipping.last_name);
+      const shippingName = limpiarNombre(`${(shipping.first_name || '').trim()} ${(shipping.last_name || '').trim()}`);
       if (shippingName) updateFields.name = shippingName;
     }
     if (shipping.province) updateFields.state = shipping.province;

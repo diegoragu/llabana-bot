@@ -9,7 +9,8 @@
  *   asking_returning_email → busca por email                 → active | asking_profile
  *   asking_profile       → elige qué busca (4 opciones)     → escalated | asking_state
  *   asking_state         → pide estado                       → asking_city
- *   asking_city          → REGISTRA EN SHEETS, informa canal → asking_email
+ *   asking_city          → REGISTRA EN SHEETS, informa canal → asking_name
+ *   asking_name          → valida y guarda nombre (máx 2 reintentos) → asking_email
  *   asking_email         → email opcional, actualiza Sheets  → active
  *   active               → Claude libre                      → escalated
  *
@@ -48,6 +49,10 @@ const CHANNEL_PAQUETERIA = {
   detail:  'Nacional',
   message: 'Te mandamos por paquetería a todo México 📦 Puedes hacer tu pedido en llabanaenlinea.com',
 };
+
+const ASK_EMAIL_MSG =
+  '¿Me compartes tu correo para mandarte información y promociones? 📧\n' +
+  'No es obligatorio';
 
 // Patrones para detectar que está fuera de México
 const OUTSIDE_MEXICO_PATTERNS = [
@@ -135,6 +140,7 @@ async function handleMessage(phone, messageBody) {
     case 'asking_profile':          return handleAskingProfile(phone, messageBody, session);
     case 'asking_state':            return handleAskingState(phone, messageBody, session);
     case 'asking_city':             return handleAskingCity(phone, messageBody, session);
+    case 'asking_name':             return handleAskingName(phone, messageBody, session);
     case 'asking_email':            return handleAskingEmail(phone, messageBody, session);
     case 'active':                  return handleActive(phone, messageBody, session);
     case 'out_of_coverage':         return OUT_OF_COVERAGE_MSG;
@@ -274,16 +280,53 @@ async function handleAskingCity(phone, message, session) {
   }
 
   sessionManager.updateSession(phone, {
-    flowState: 'asking_email',
+    flowState: 'asking_name',
     customer:  { ...customerData, rowIndex },
-    tempData:  session.tempData,
+    tempData:  { ...session.tempData, nameAttempts: 0 },
   });
 
-  return (
-    `${CHANNEL_PAQUETERIA.message}\n\n` +
-    `¿Me compartes tu correo para mandarte información y promociones? 📧\n` +
-    `No es obligatorio`
-  );
+  return `${CHANNEL_PAQUETERIA.message}\n\n¿Me dices tu nombre? 😊`;
+}
+
+// ── Paso 5: Nombre ────────────────────────────────────────────────────────────
+
+async function handleAskingName(phone, message, session) {
+  const input    = message.trim();
+  const customer = session.customer;
+  const attempts = session.tempData?.nameAttempts ?? 0;
+  const nombre   = sheetsService.limpiarNombre(input);
+
+  if (nombre) {
+    // Nombre válido → guardar y pasar a email
+    if (customer?.rowIndex) {
+      sheetsService.updateOrderData(customer.rowIndex, { name: nombre }).catch(() => {});
+    }
+    sessionManager.updateSession(phone, {
+      flowState: 'asking_email',
+      customer:  { ...customer, name: nombre },
+      tempData:  {},
+    });
+    return ASK_EMAIL_MSG;
+  }
+
+  // Nombre inválido — reintentar hasta 2 veces
+  if (attempts < 2) {
+    sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, nameAttempts: attempts + 1 },
+    });
+    return 'No capturé bien tu nombre 😅 ¿Me lo dices de nuevo? Solo tu nombre, por ejemplo: Juan García';
+  }
+
+  // Agotó intentos → guardar intento original en Notas y continuar sin nombre
+  if (customer?.rowIndex) {
+    const baseNotas = customer.channel
+      ? `Canal: ${customer.channel} (${customer.channelDetail})`
+      : '';
+    const notas = [baseNotas, `Nombre no capturado: "${input}"`].filter(Boolean).join(' | ');
+    sheetsService.updateOrderData(customer.rowIndex, { notas }).catch(() => {});
+  }
+  sessionManager.updateSession(phone, { flowState: 'asking_email', tempData: {} });
+  return ASK_EMAIL_MSG;
 }
 
 // ── Paso 7: Email opcional ────────────────────────────────────────────────────

@@ -140,6 +140,36 @@ function formatPhoneForStorage(phone) {
   return n ? `+52${n}` : '';
 }
 
+/**
+ * Valida y limpia un nombre antes de guardarlo.
+ * Devuelve el nombre capitalizado o '' si el valor no es un nombre real.
+ */
+function limpiarNombre(nombre) {
+  if (!nombre) return '';
+  let n = nombre.trim();
+  if (!n) return '';
+
+  // Demasiado largo para ser un nombre
+  if (n.length > 60) return '';
+
+  // Parece un email
+  if (n.includes('@') || /\.com\b/i.test(n)) return '';
+
+  // Quitar prefijo "Con " (checkout de invitado en Shopify)
+  n = n.replace(/^con\s+/i, '').trim();
+  if (!n) return '';
+
+  // Contiene palabras que no son nombres
+  const nonName = /\b(hola|buenos?\s*d[ií]as?|buenas?\s*(tardes?|noches?)|quiero|precio|info(rmaci[oó]n)?|cu[aá]nto|c[oó]mo|gracias|tengo|busco|necesito|vendo|compro)\b/i;
+  if (nonName.test(n)) return '';
+
+  // Solo dígitos
+  if (/^\d+$/.test(n)) return '';
+
+  // Capitalizar cada palabra
+  return n.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
 /** Minúsculas, sin acentos, sin caracteres especiales. */
 function normalizeText(text) {
   return (text || '')
@@ -284,7 +314,7 @@ async function appendConversationLog(phone, userMsg, botMsg) {
  * @param {number} rowIndex  - Fila 1-based del cliente en la hoja
  * @param {object} fields    - { totalOrders?, totalSpent?, segmento? }
  */
-async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fechaCompra, name, phone, state, city, cp } = {}) {
+async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fechaCompra, name, phone, state, city, cp, notas } = {}) {
   try {
     const sheets = await getSheets();
     const data   = [];
@@ -298,6 +328,7 @@ async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fe
     if (state       !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.ESTADO)}${rowIndex}`,       values: [[state]]        });
     if (city        !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.CIUDAD)}${rowIndex}`,       values: [[city]]         });
     if (cp          !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.CP)}${rowIndex}`,           values: [[cp]]           });
+    if (notas       !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.NOTAS)}${rowIndex}`,        values: [[notas]]        });
     data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${rowIndex}`, values: [[nowMXDatetime()]] });
 
     await sheets.spreadsheets.values.batchUpdate({
@@ -678,6 +709,7 @@ function columnLetter(index) {
 }
 
 module.exports = {
+  limpiarNombre,
   formatPhoneForStorage,
   findCustomer,
   findCustomerByEmail,
