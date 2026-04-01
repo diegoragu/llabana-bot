@@ -5,7 +5,7 @@
  * Eventos manejados (header x-shopify-topic):
  *   customers/create  → registra o actualiza cliente; agrega tag "Creo cuenta"
  *   customers/update  → si accepts_marketing pasó a true, marca "Acepta email mkt" = SI
- *   checkouts/delete  → segmento "Carrito abandonado" + tag; nunca sobreescribe Comprador/Recompra
+ *   checkouts/create  → segmento "Carrito abandonado" + tag; nunca sobreescribe Comprador/Recompra
  *   orders/paid       → segmento "Comprador"/"Recompra", actualiza órdenes, monto y tags
  *
  * Nota: no existe columna "Fecha última compra" en el schema de Sheets —
@@ -74,7 +74,7 @@ async function shopifyWebhookHandler(req, res) {
     switch (topic) {
       case 'customers/create':  await handleCustomerCreate(payload);  break;
       case 'customers/update':  await handleCustomerUpdate(payload);  break;
-      case 'checkouts/delete':  await handleCheckoutDelete(payload);  break;
+      case 'checkouts/create':  await handleCheckoutCreate(payload);  break;
       case 'orders/paid':       await handleOrderPaid(payload);       break;
       default:
         console.log(`   Topic no manejado: ${topic}`);
@@ -87,7 +87,6 @@ async function shopifyWebhookHandler(req, res) {
 // ── Evento: customers/create ──────────────────────────────────────────────────
 
 async function handleCustomerCreate(payload) {
-  console.log('SHOPIFY CUSTOMER PAYLOAD:', JSON.stringify(payload, null, 2));
   const email = payload.email;
   if (!email) {
     console.log('   customers/create sin email, omitiendo');
@@ -158,30 +157,30 @@ async function handleCustomerUpdate(payload) {
   console.log(`   ✅ customers/update: ${email} → Acepta email mkt = SI`);
 }
 
-// ── Evento: checkouts/delete (carrito abandonado) ─────────────────────────────
+// ── Evento: checkouts/create (carrito abandonado) ─────────────────────────────
 
-async function handleCheckoutDelete(payload) {
+async function handleCheckoutCreate(payload) {
   const email = payload.email;
   if (!email) {
-    console.log('   checkouts/delete sin email, omitiendo');
+    console.log('   checkouts/create sin email, omitiendo');
     return;
   }
 
   const customer = await sheetsService.findCustomerByEmail(email);
   if (!customer) {
-    console.log(`   checkouts/delete: ${email} no está en Sheets, omitiendo`);
+    console.log(`   checkouts/create: ${email} no está en Sheets, omitiendo`);
     return;
   }
 
   const seg = customer.segmento || '';
   if (seg === 'Comprador' || seg === 'Recompra') {
-    console.log(`   checkouts/delete: ${email} ya es "${seg}", no se sobreescribe`);
+    console.log(`   checkouts/create: ${email} ya es "${seg}", no se sobreescribe`);
     return;
   }
 
   await sheetsService.updateOrderData(customer.rowIndex, { segmento: 'Carrito abandonado' });
   await sheetsService.appendTag(customer.rowIndex, 'Carrito abandonado');
-  console.log(`   🛒 checkouts/delete: ${email} → Carrito abandonado`);
+  console.log(`   🛒 checkouts/create: ${email} → Carrito abandonado`);
 }
 
 // ── Evento: orders/paid ───────────────────────────────────────────────────────
@@ -214,12 +213,26 @@ async function handleOrderPaid(payload) {
   const fechaCompra = new Date(rawDate)
     .toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' }); // sv-SE → YYYY-MM-DD
 
-  await sheetsService.updateOrderData(customer.rowIndex, {
+  // Actualizar nombre desde shipping_address si el actual está vacío o es solo 1 palabra
+  const shipping = payload.shipping_address;
+  const updateFields = {
     totalOrders: String(newOrders),
     totalSpent:  newSpent,
     segmento,
     fechaCompra,
-  });
+  };
+  if (shipping) {
+    const currentName = (customer.name || '').trim();
+    const nameWords   = currentName.split(/\s+/).filter(Boolean).length;
+    if (nameWords <= 1) {
+      const shippingName = `${(shipping.first_name || '').trim()} ${(shipping.last_name || '').trim()}`.trim();
+      if (shippingName) updateFields.name = shippingName;
+    }
+    if (shipping.province) updateFields.state = shipping.province;
+    if (shipping.city)     updateFields.city  = shipping.city;
+  }
+
+  await sheetsService.updateOrderData(customer.rowIndex, updateFields);
   await sheetsService.appendTag(customer.rowIndex, tag);
 
   console.log(`   ✅ orders/paid: ${email} → ${segmento} | Órdenes: ${newOrders} | Total: ${newSpent}`);
