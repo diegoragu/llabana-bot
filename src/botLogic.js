@@ -3,16 +3,15 @@
  *
  * Estados para cliente NUEVO (no encontrado por teléfono):
  *
- *   [primer msg]         → bienvenida + "¿Estás en México?"  → asking_mexico
- *   asking_mexico        → valida México                      → asking_returning | out_of_coverage
- *   asking_returning     → ¿ya compró antes?                 → asking_returning_email | asking_profile
- *   asking_returning_email → busca por email                 → active | asking_profile
- *   asking_profile       → elige qué busca (4 opciones)     → escalated | asking_state
- *   asking_state         → pide estado                       → asking_city
- *   asking_city          → REGISTRA EN SHEETS, informa canal → asking_name
- *   asking_name          → valida y guarda nombre (máx 2 reintentos) → asking_email
- *   asking_email         → email opcional, actualiza Sheets  → active
- *   active               → Claude libre                      → escalated
+ *   [primer msg]           → bienvenida + "¿Estás en México?"     → asking_mexico
+ *   asking_mexico          → valida México                         → asking_returning | out_of_coverage
+ *   asking_returning       → ¿ya compró antes?                    → asking_returning_email | asking_name
+ *   asking_returning_email → busca por email                      → active | asking_name
+ *   asking_name            → nombre (máx 2 reintentos)            → asking_intent
+ *   asking_intent          → pregunta abierta; Claude clasifica    → escalated | asking_state
+ *   asking_state           → pide estado                          → asking_city
+ *   asking_city            → REGISTRA EN SHEETS, informa canal    → active
+ *   active                 → Claude libre                          → escalated
  *
  * Cliente EXISTENTE (encontrado por teléfono):
  *   → saludo por nombre → active directamente
@@ -37,22 +36,11 @@ const OUT_OF_COVERAGE_MSG =
   'Gracias por escribirnos 🙏 Por ahora solo tenemos entregas en México. ' +
   'Cuando estés por acá con gusto te ayudamos 🌾';
 
-const PROFILE_MENU =
-  '¿Qué estás buscando?\n\n' +
-  '1️⃣  Comprar 1 o 2 bultos 🛒\n' +
-  '2️⃣  Grandes cantidades 📦\n' +
-  '3️⃣  Mayoreo o reventa 🚛\n' +
-  '4️⃣  Otra consulta ❓';
-
 const CHANNEL_PAQUETERIA = {
   channel: 'paqueteria',
   detail:  'Nacional',
-  message: 'Te mandamos por paquetería a todo México 📦 Puedes hacer tu pedido en llabanaenlinea.com',
+  message: 'Puedes hacer tu pedido en llabanaenlinea.com y te lo mandamos a todo México 📦',
 };
-
-const ASK_EMAIL_MSG =
-  '¿Me compartes tu correo para mandarte información y promociones? 📧\n' +
-  'No es obligatorio';
 
 // Patrones para detectar que está fuera de México
 const OUTSIDE_MEXICO_PATTERNS = [
@@ -72,21 +60,28 @@ const RETURNING_PATTERNS = [
   /\bya\s+he\b/i, /\bantes\b/i, /\bregistrado\b/i,
 ];
 
-// Patrones para escalación en perfil (mayoreo / grandes cantidades)
+// Patrones para escalación: mayoreo, grandes cantidades, reventa
 const ESCALATION_PROFILE_PATTERNS = [
-  /^[23]$/, /grandes?\s*cantidad/i, /mayoreo/i, /reventa/i,
+  /grandes?\s*cantidad/i, /mayoreo/i, /reventa/i,
   /revendedor/i, /distribuidor/i, /por\s*mayor/i, /\bal\s*mayor\b/i,
+];
+
+// Patrones para solicitud de asesor humano
+const HUMAN_REQUEST_PATTERNS = [
+  /\basesor\b/i, /\bhumano\b/i, /\bpersona\b/i, /\bwig\b/i,
+  /\bagente\b/i, /hablar\s+con/i, /quiero\s+hablar/i,
+  /\batenci[oó]n\s+humana\b/i, /\bme\s+atiendan?\b/i,
+];
+
+// Patrones para preguntas de precio
+const PRICE_PATTERNS = [
+  /\bprecio/i, /\bcu[aá]nto\s+cuesta/i, /\bcu[aá]nto\s+vale/i,
+  /\bcu[aá]nto\s+cobran/i, /\bcu[aá]nto\s+es\b/i, /\bcosto\b/i,
+  /\btarifa\b/i, /\bpresupuesto\b/i,
 ];
 
 // Palabras que reinician la sesión desde cualquier estado
 const RESET_PATTERNS = /^(hola|inicio|men[uú]|empezar|reset|start|comenzar)$/i;
-
-// Patrones para omitir email
-const SKIP_EMAIL_PATTERNS = [
-  /^no$/i, /^nop$/i, /^nope$/i, /^omitir$/i, /^omite$/i, /^sin correo$/i,
-  /^no tengo$/i, /^no quiero$/i, /^skip$/i, /^da igual$/i,
-  /^no gracias$/i, /^paso$/i, /^ninguno$/i, /^no es necesario$/i,
-];
 
 function isOutsideMexico(text) {
   return /^no$/i.test(text.trim()) || OUTSIDE_MEXICO_PATTERNS.some(re => re.test(text));
@@ -100,8 +95,12 @@ function isEscalationProfile(text) {
   return ESCALATION_PROFILE_PATTERNS.some(re => re.test(text.trim()));
 }
 
-function wantsToSkipEmail(text) {
-  return SKIP_EMAIL_PATTERNS.some(re => re.test(text.trim()));
+function isRequestingHuman(text) {
+  return HUMAN_REQUEST_PATTERNS.some(re => re.test(text.trim()));
+}
+
+function isPriceQuestion(text) {
+  return PRICE_PATTERNS.some(re => re.test(text.trim()));
 }
 
 function isValidEmail(text) {
@@ -145,11 +144,10 @@ async function handleMessage(phone, messageBody) {
     case 'asking_mexico':           return handleAskingMexico(phone, messageBody, session);
     case 'asking_returning':        return handleAskingReturning(phone, messageBody, session);
     case 'asking_returning_email':  return handleAskingReturningEmail(phone, messageBody, session);
-    case 'asking_profile':          return handleAskingProfile(phone, messageBody, session);
+    case 'asking_name':             return handleAskingName(phone, messageBody, session);
+    case 'asking_intent':           return handleAskingIntent(phone, messageBody, session);
     case 'asking_state':            return handleAskingState(phone, messageBody, session);
     case 'asking_city':             return handleAskingCity(phone, messageBody, session);
-    case 'asking_name':             return handleAskingName(phone, messageBody, session);
-    case 'asking_email':            return handleAskingEmail(phone, messageBody, session);
     case 'active':                  return handleActive(phone, messageBody, session);
     case 'out_of_coverage':
       sessionManager.deleteSession(phone);
@@ -181,9 +179,9 @@ async function handleAskingReturning(phone, message, session) {
     sessionManager.updateSession(phone, { flowState: 'asking_returning_email' });
     return 'Dame tu correo para buscarte en nuestros registros 📧';
   }
-  // Primera vez o ambiguo → ir directo al perfil
-  sessionManager.updateSession(phone, { flowState: 'asking_profile' });
-  return PROFILE_MENU;
+  // Primera vez o ambiguo → pedir nombre
+  sessionManager.updateSession(phone, { flowState: 'asking_name', tempData: { nameAttempts: 0 } });
+  return '¿Con quién tengo el gusto? 😊';
 }
 
 // ── Paso 2b: Buscar cliente existente por email ───────────────────────────────
@@ -191,11 +189,10 @@ async function handleAskingReturning(phone, message, session) {
 async function handleAskingReturningEmail(phone, message, session) {
   const input = message.trim();
 
-  // Si no quiere dar email → tratar como nuevo
-  if (wantsToSkipEmail(input) || !isValidEmail(input)) {
-    sessionManager.updateSession(phone, { flowState: 'asking_profile' });
-    const nota = isValidEmail(input) ? '' : 'No te encontramos 🙏 No hay problema, te atendemos igual.\n\n';
-    return `${nota}${PROFILE_MENU}`;
+  // Si no quiere dar email o no es válido → tratar como nuevo
+  if (!isValidEmail(input) || /^no$/i.test(input)) {
+    sessionManager.updateSession(phone, { flowState: 'asking_name', tempData: { nameAttempts: 0 } });
+    return '¿Con quién tengo el gusto? 😊';
   }
 
   const email    = input.toLowerCase();
@@ -220,31 +217,73 @@ async function handleAskingReturningEmail(phone, message, session) {
     return `¡Ya te tenemos, ${existing.name}! 👋 ¿En qué te ayudo?`;
   }
 
-  // No encontrado → tratar como nuevo
-  sessionManager.updateSession(phone, { flowState: 'asking_profile' });
-  return `No te encontramos en nuestros registros 🙏 No hay problema.\n\n${PROFILE_MENU}`;
+  // No encontrado → continuar como nuevo desde nombre
+  sessionManager.updateSession(phone, { flowState: 'asking_name', tempData: { nameAttempts: 0 } });
+  return 'No te encontramos en nuestros registros 🙏 No hay problema, te atiendo igual.\n\n¿Con quién tengo el gusto? 😊';
 }
 
-// ── Paso 3: Perfil ────────────────────────────────────────────────────────────
+// ── Paso 3: Nombre ────────────────────────────────────────────────────────────
 
-async function handleAskingProfile(phone, message, session) {
-  if (isEscalationProfile(message)) {
-    // Mayoreo / grandes cantidades → escalar a Wig sin registrar
-    session.tempData.profile = 'mayoreo';
-    sessionManager.updateSession(phone, { flowState: 'escalated', tempData: session.tempData });
-    await notifyWig(phone, session, 'Perfil: mayoreo / grandes cantidades');
+async function handleAskingName(phone, message, session) {
+  const input    = message.trim();
+  const attempts = session.tempData?.nameAttempts ?? 0;
+  const nombre   = sheetsService.limpiarNombre(input);
+
+  if (nombre) {
+    sessionManager.updateSession(phone, {
+      flowState: 'asking_intent',
+      tempData:  { ...session.tempData, name: nombre, nameAttempts: 0 },
+    });
+    return '¿En qué te puedo ayudar hoy? 😊';
+  }
+
+  if (attempts < 2) {
+    sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, nameAttempts: attempts + 1 },
+    });
+    return 'No capturé bien tu nombre 😅 ¿Me lo dices de nuevo? Solo tu nombre, por ejemplo: Juan García';
+  }
+
+  // Agotó intentos → continuar sin nombre
+  sessionManager.updateSession(phone, {
+    flowState: 'asking_intent',
+    tempData:  { ...session.tempData, nameAttempts: 0 },
+  });
+  return '¿En qué te puedo ayudar hoy? 😊';
+}
+
+// ── Paso 4: Intención (pregunta abierta) ──────────────────────────────────────
+
+async function handleAskingIntent(phone, message, session) {
+  const intent = message.trim();
+
+  // Guardar consulta en tempData para incluirla en Notas al registrar
+  session.tempData.intent = intent;
+  sessionManager.updateSession(phone, { tempData: session.tempData });
+
+  // Escalación: mayoreo, reventa, grandes cantidades o solicitud de humano
+  if (isEscalationProfile(message) || isRequestingHuman(message)) {
+    sessionManager.updateSession(phone, { flowState: 'escalated' });
+    await notifyWig(phone, session, `Consulta inicial: "${intent}"`);
     return 'Ahorita te conecto con un asesor 🙌';
   }
 
-  // Opción 1 (comprar), 4 (consulta) o ambiguo → continuar flujo
-  const profile = /^4$|consulta|informaci/i.test(message.trim()) ? 'consulta' : 'compra';
-  session.tempData.profile = profile;
-  sessionManager.updateSession(phone, { flowState: 'asking_state', tempData: session.tempData });
+  // Pregunta de precio → informar y pedir ubicación
+  if (isPriceQuestion(message)) {
+    sessionManager.updateSession(phone, { flowState: 'asking_state' });
+    return (
+      'Los precios y disponibilidad los encuentras en nuestra tienda en línea 🛒\n' +
+      'llabanaenlinea.com\n\n' +
+      '¿De qué estado eres? Así te digo cómo te llega tu pedido 📦'
+    );
+  }
 
-  return '¿De qué estado eres?';
+  // Cualquier otra consulta → pedir ubicación
+  sessionManager.updateSession(phone, { flowState: 'asking_state' });
+  return '¿De qué estado eres? 📍';
 }
 
-// ── Paso 4: Ubicación ─────────────────────────────────────────────────────────
+// ── Paso 5: Ubicación ─────────────────────────────────────────────────────────
 
 async function handleAskingState(phone, message, session) {
   const state = message.trim();
@@ -265,15 +304,12 @@ async function handleAskingCity(phone, message, session) {
   const city = message.trim();
   if (city.length < 2) return '¿De qué ciudad o municipio?';
 
-  session.tempData.city = capitalize(city);
-
-  // ── Registrar en Sheets en cuanto tenemos teléfono + estado + ciudad ──────
   const customerData = {
     phone,
-    name:          '',
+    name:          session.tempData.name || '',
     email:         '',
     state:         session.tempData.state,
-    city:          session.tempData.city,
+    city:          capitalize(city),
     cp:            '',
     species:       '',
     channel:       CHANNEL_PAQUETERIA.channel,
@@ -289,118 +325,33 @@ async function handleAskingCity(phone, message, session) {
     console.error('Error al registrar cliente en handleAskingCity:', err.message);
   }
 
-  sessionManager.updateSession(phone, {
-    flowState: 'asking_name',
-    customer:  { ...customerData, rowIndex },
-    tempData:  { ...session.tempData, nameAttempts: 0 },
-  });
-
-  return `${CHANNEL_PAQUETERIA.message}\n\n¿Me dices tu nombre? 😊`;
-}
-
-// ── Paso 5: Nombre ────────────────────────────────────────────────────────────
-
-async function handleAskingName(phone, message, session) {
-  const input    = message.trim();
-  const customer = session.customer;
-  const attempts = session.tempData?.nameAttempts ?? 0;
-  const nombre   = sheetsService.limpiarNombre(input);
-
-  if (nombre) {
-    // Nombre válido → guardar y pasar a email
-    if (customer?.rowIndex) {
-      sheetsService.updateOrderData(customer.rowIndex, { name: nombre }).catch(() => {});
-    }
-    sessionManager.updateSession(phone, {
-      flowState: 'asking_email',
-      customer:  { ...customer, name: nombre },
-      tempData:  {},
-    });
-    return ASK_EMAIL_MSG;
+  // Guardar consulta inicial en Notas si existe
+  if (rowIndex && session.tempData.intent) {
+    const baseNotas = `Canal: ${CHANNEL_PAQUETERIA.channel} (${CHANNEL_PAQUETERIA.detail})`;
+    const notas = `${baseNotas} | Consulta: "${session.tempData.intent}"`;
+    sheetsService.updateOrderData(rowIndex, { notas }).catch(() => {});
   }
 
-  // Nombre inválido — reintentar hasta 2 veces
-  if (attempts < 2) {
-    sessionManager.updateSession(phone, {
-      tempData: { ...session.tempData, nameAttempts: attempts + 1 },
-    });
-    return 'No capturé bien tu nombre 😅 ¿Me lo dices de nuevo? Solo tu nombre, por ejemplo: Juan García';
-  }
-
-  // Agotó intentos → guardar intento original en Notas y continuar sin nombre
-  if (customer?.rowIndex) {
-    const baseNotas = customer.channel
-      ? `Canal: ${customer.channel} (${customer.channelDetail})`
-      : '';
-    const notas = [baseNotas, `Nombre no capturado: "${input}"`].filter(Boolean).join(' | ');
-    sheetsService.updateOrderData(customer.rowIndex, { notas }).catch(() => {});
-  }
-  sessionManager.updateSession(phone, { flowState: 'asking_email', tempData: {} });
-  return ASK_EMAIL_MSG;
-}
-
-// ── Paso 7: Email opcional ────────────────────────────────────────────────────
-
-async function handleAskingEmail(phone, message, session) {
-  const input    = message.trim();
-  const customer = session.customer;
-
-  if (wantsToSkipEmail(input)) {
-    sessionManager.updateSession(phone, { flowState: 'active', tempData: {} });
-    return '¡Listo! ¿En qué te ayudo?';
-  }
-
-  if (!isValidEmail(input)) {
-    return (
-      'Ese correo no se ve bien. ¿Lo revisas?\n' +
-      '(o escribe "no" si no quieres darlo)'
-    );
-  }
-
-  const email    = input.toLowerCase();
-  const existing = await sheetsService.findCustomerByEmail(email);
-
-  if (existing) {
-    // Email pertenece a un registro previo → eliminar duplicado, activar con el original
-    if (customer?.rowIndex) {
-      sheetsService.deleteCustomerRow(customer.rowIndex).catch(err =>
-        console.error('No se pudo eliminar fila duplicada:', err.message)
-      );
-    }
-    await sheetsService.updateCustomerPhone(existing.rowIndex, phone);
-    sheetsService.appendConversationLog(
-      phone, '[reconocido por email]', `Tel actualizado. Bienvenida a ${existing.name}`
-    ).catch(() => {});
-
-    const mergedCustomer = {
-      ...existing,
-      phone,
-      channel:       CHANNEL_PAQUETERIA.channel,
-      channelDetail: CHANNEL_PAQUETERIA.detail,
-    };
-    sessionManager.updateSession(phone, { flowState: 'active', customer: mergedCustomer, tempData: {} });
-    console.log(`🔄 Reconocido por email: ${existing.name} (nuevo tel: ${phone})`);
-    return `¡Ya te conocemos, ${existing.name}! 🎉 ¿En qué te ayudo?`;
-  }
-
-  // Email nuevo → actualizar fila ya creada
-  if (customer?.rowIndex) {
-    sheetsService.updateCustomerEmail(customer.rowIndex, email).catch(err =>
-      console.error('Error actualizando email:', err.message)
-    );
-  }
+  const greeting = customerData.name ? `¡Listo, ${customerData.name}! ` : '¡Listo! ';
   sessionManager.updateSession(phone, {
     flowState: 'active',
-    customer:  { ...customer, email },
+    customer:  { ...customerData, rowIndex },
     tempData:  {},
   });
 
-  return `Listo, te avisamos a *${email}*. ¿En qué te ayudo?`;
+  return `${greeting}${CHANNEL_PAQUETERIA.message} ¿Tienes alguna duda más? 😊`;
 }
 
 // ── Conversación libre con Claude ─────────────────────────────────────────────
 
 async function handleActive(phone, message, session) {
+  // Detección rápida: cliente pide hablar con un asesor/humano
+  if (isRequestingHuman(message)) {
+    await notifyWig(phone, session, 'Cliente solicita hablar con un asesor');
+    sessionManager.updateSession(phone, { flowState: 'escalated' });
+    return 'Ahorita te conecto con un asesor 🙌';
+  }
+
   session.conversationHistory.push({ role: 'user', content: message });
 
   let response;
@@ -444,10 +395,10 @@ async function notifyWig(phone, session, motivo = '') {
   const msg =
     `🚨 *ESCALACIÓN*\n\n` +
     `📱 Tel:      ${phone}\n` +
-    `👤 Nombre:   ${customer.name  || 'N/D'}\n` +
+    `👤 Nombre:   ${customer.name || tempData.name || 'N/D'}\n` +
     `📍 Estado:   ${customer.state || tempData.state || 'N/D'}\n` +
     `🏙️ Ciudad:  ${customer.city  || tempData.city  || 'N/D'}\n` +
-    `🏷️ Perfil:  ${tempData.profile || customer.segmento || 'N/D'}\n` +
+    `💬 Consulta: ${tempData.intent || customer.segmento || 'N/D'}\n` +
     `📌 Motivo:   ${motivo}\n\n` +
     `*Conversación:*\n${transcript}`;
 

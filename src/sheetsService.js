@@ -137,7 +137,7 @@ function formatPhoneForStorage(phone) {
   let n = (phone || '').replace('whatsapp:', '').replace(/\D/g, '');
   if (n.startsWith('521') && n.length === 13) n = n.substring(3); // +521XXXXXXXXXX → XXXXXXXXXX
   else if (n.startsWith('52')  && n.length === 12) n = n.substring(2); // +52XXXXXXXXXX  → XXXXXXXXXX
-  return n ? `+52${n}` : '';
+  return n ? `'+52${n}` : '';
 }
 
 /**
