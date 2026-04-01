@@ -4,8 +4,9 @@
  *
  * Eventos manejados (header x-shopify-topic):
  *   customers/create  → registra o actualiza cliente; agrega tag "Solo cuenta"
- *   customers/update  → si accepts_marketing pasó a true, marca "Acepta email mkt" = SI; actualiza nombre si incompleto
- *   checkouts/create  → segmento "Carrito abandonado" + tag; nunca sobreescribe Comprador/Recompra
+ *   customers/update  → accepts_marketing, nombre incompleto, y tags de Shopify Flow
+ *                       (tag "Carrito abandonado" → segmento; tag "Solo cuenta" → historial)
+ *   checkouts/create  → DESACTIVADO (carrito abandonado ahora llega via customers/update + Shopify Flow)
  *   orders/paid       → segmento "Comprador"/"Recompra", actualiza órdenes, monto y tags
  *
  * Nota: no existe columna "Fecha última compra" en el schema de Sheets —
@@ -75,7 +76,8 @@ async function shopifyWebhookHandler(req, res) {
     switch (topic) {
       case 'customers/create':  await handleCustomerCreate(payload);  break;
       case 'customers/update':  await handleCustomerUpdate(payload);  break;
-      case 'checkouts/create':  await handleCheckoutCreate(payload);  break;
+      // checkouts/create desactivado — carrito abandonado llega via customers/update + Shopify Flow
+      // case 'checkouts/create':  await handleCheckoutCreate(payload);  break;
       case 'orders/paid':       await handleOrderPaid(payload);       break;
       default:
         console.log(`   Topic no manejado: ${topic}`);
@@ -144,20 +146,41 @@ async function handleCustomerCreate(payload) {
 
 // ── Evento: customers/update ──────────────────────────────────────────────────
 
+// Tags de Shopify que no son propios del negocio y deben ignorarse
+const SHOPIFY_SYSTEM_TAGS = /^(judge\.me|login with shop|shop|shopify)/i;
+
+/**
+ * Parsea el campo "tags" del payload de customers/update.
+ * Devuelve un Set de tags limpios, filtrando los de sistema de Shopify.
+ */
+function parseShopifyTags(rawTags) {
+  if (!rawTags) return new Set();
+  return new Set(
+    rawTags.split(',')
+      .map(t => t.trim())
+      .filter(t => t && !SHOPIFY_SYSTEM_TAGS.test(t))
+  );
+}
+
 async function handleCustomerUpdate(payload) {
   const email = payload.email;
   if (!email) return;
 
-  // Nos interesa si cambia accepts_marketing o si podemos mejorar el nombre
   const hasMarketingChange = !!payload.accepts_marketing;
   const hasFirstName       = !!(payload.first_name || '').trim();
-  if (!hasMarketingChange && !hasFirstName) return;
+  const shopifyTags        = parseShopifyTags(payload.tags);
+  const hasCarrito         = shopifyTags.has('Carrito abandonado');
+  const hasSoloCuenta      = shopifyTags.has('Solo cuenta');
+
+  if (!hasMarketingChange && !hasFirstName && !hasCarrito && !hasSoloCuenta) return;
 
   const existing = await sheetsService.findCustomerByEmail(email);
   if (!existing) {
     console.log(`   customers/update: ${email} no está en Sheets, omitiendo`);
     return;
   }
+
+  const seg = existing.segmento || '';
 
   if (hasMarketingChange) {
     await sheetsService.updateEmailMarketing(existing.rowIndex, 'SI');
@@ -173,7 +196,20 @@ async function handleCustomerUpdate(payload) {
     }
   }
 
-  console.log(`   ✅ customers/update: ${email} → mkt=${hasMarketingChange} nombre actualizado=${hasFirstName}`);
+  // Tag "Carrito abandonado" desde Shopify Flow → actualizar segmento (nunca sobreescribir Comprador/Recompra)
+  if (hasCarrito && seg !== 'Comprador' && seg !== 'Recompra') {
+    await sheetsService.updateOrderData(existing.rowIndex, { segmento: 'Carrito abandonado' });
+    await sheetsService.appendTag(existing.rowIndex, 'Carrito abandonado');
+    console.log(`   🛒 customers/update: ${email} → Carrito abandonado (via tag Shopify Flow)`);
+  }
+
+  // Tag "Solo cuenta" → agregar al historial si el segmento es Lead frío
+  if (hasSoloCuenta && seg === 'Lead frío') {
+    await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
+    console.log(`   customers/update: ${email} → tag "Solo cuenta" registrado`);
+  }
+
+  console.log(`   ✅ customers/update: ${email} | mkt=${hasMarketingChange} carrito=${hasCarrito} soloCuenta=${hasSoloCuenta}`);
 }
 
 // ── Evento: checkouts/create (carrito abandonado) ─────────────────────────────
