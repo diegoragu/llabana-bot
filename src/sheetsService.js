@@ -129,15 +129,18 @@ function normalizePhone(phone) {
 }
 
 /**
- * Devuelve el teléfono en formato +52XXXXXXXXXX para guardar en Sheets.
- * Elimina el prefijo whatsapp:, no-dígitos y el código de país 52/521,
- * luego antepone +52.
+ * Devuelve el teléfono listo para guardar en Google Sheets como texto.
+ * - Elimina prefijo "whatsapp:" (case-insensitive) y caracteres no numéricos.
+ * - Normaliza a 10 dígitos y antepone +52.
+ * - El apóstrofo inicial (') es el prefijo de texto de Sheets: con valueInputOption
+ *   'USER_ENTERED', Sheets lo interpreta como "forzar texto" y la celda muestra
+ *   +52XXXXXXXXXX sin apóstrofo pero almacenado como texto, no como número.
  */
 function formatPhoneForStorage(phone) {
   let n = (phone || '').replace(/^whatsapp:/i, '').replace(/\D/g, '');
-  if (n.startsWith('521') && n.length === 13) n = n.substring(3); // +521XXXXXXXXXX → XXXXXXXXXX
-  else if (n.startsWith('52')  && n.length === 12) n = n.substring(2); // +52XXXXXXXXXX  → XXXXXXXXXX
-  return n ? `'+52${n}` : ''; // Prefijo ' fuerza formato texto en Google Sheets
+  if (n.startsWith('521') && n.length === 13) n = n.substring(3); // 521XXXXXXXXXX → XXXXXXXXXX
+  else if (n.startsWith('52') && n.length === 12) n = n.substring(2); // 52XXXXXXXXXX  → XXXXXXXXXX
+  return n ? `'+52${n}` : '';
 }
 
 /**
@@ -167,8 +170,11 @@ function limpiarNombre(nombre) {
   // Solo dígitos
   if (/^\d+$/.test(n)) return '';
 
-  // Capitalizar cada palabra (lowercase primero para normalizar mayúsculas mezcladas)
-  return n.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+  // Lowercase primero (normaliza GARCIA, RomáN, etc.) luego capitaliza cada palabra
+  return n.toLowerCase()
+    .split(' ')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }
 
 /** Minúsculas, sin acentos, sin caracteres especiales. */

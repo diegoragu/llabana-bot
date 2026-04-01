@@ -130,7 +130,7 @@ async function handleMessage(phone, messageBody) {
       ).catch(() => {});
 
       return customer.name
-        ? `¡Hola ${customer.name}! 👋 Qué gusto verte de nuevo. ¿En qué te ayudo?`
+        ? `¡Hola ${primerNombre(customer.name)}! 👋 Qué gusto verte de nuevo. ¿En qué te ayudo?`
         : '¡Hola! 👋 Qué gusto verte de nuevo. ¿En qué te ayudo?';
     }
 
@@ -216,7 +216,7 @@ async function handleAskingReturningEmail(phone, message, session) {
     sessionManager.updateSession(phone, { flowState: 'active', customer });
     console.log(`🔄 Reconocido por email: ${existing.name} (nuevo tel: ${phone})`);
 
-    return `¡Ya te tenemos, ${existing.name}! 👋 ¿En qué te ayudo?`;
+    return `¡Ya te tenemos, ${primerNombre(existing.name)}! 👋 ¿En qué te ayudo?`;
   }
 
   // No encontrado → continuar como nuevo desde nombre
@@ -232,11 +232,12 @@ async function handleAskingName(phone, message, session) {
   const nombre   = sheetsService.limpiarNombre(input);
 
   if (nombre) {
+    const first = primerNombre(nombre);
     sessionManager.updateSession(phone, {
       flowState: 'asking_intent',
       tempData:  { ...session.tempData, name: nombre, nameAttempts: 0 },
     });
-    return '¿En qué te puedo ayudar hoy? 😊';
+    return `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar hoy?`;
   }
 
   if (attempts < 2) {
@@ -329,12 +330,12 @@ async function handleAskingCity(phone, message, session) {
 
   // Guardar consulta inicial en Notas si existe
   if (rowIndex && session.tempData.intent) {
-    const baseNotas = `Canal: ${CHANNEL_PAQUETERIA.channel} (${CHANNEL_PAQUETERIA.detail})`;
-    const notas = `${baseNotas} | Consulta: "${session.tempData.intent}"`;
-    sheetsService.updateOrderData(rowIndex, { notas }).catch(() => {});
+    sheetsService.updateOrderData(rowIndex, {
+      notas: `Consulta: ${session.tempData.intent}`,
+    }).catch(() => {});
   }
 
-  const greeting = customerData.name ? `¡Listo, ${customerData.name}! ` : '¡Listo! ';
+  const greeting = customerData.name ? `¡Listo, ${primerNombre(customerData.name)}! ` : '¡Listo! ';
   sessionManager.updateSession(phone, {
     flowState: 'active',
     customer:  { ...customerData, rowIndex },
@@ -414,6 +415,11 @@ async function notifyWig(phone, session, motivo = '') {
 
 function capitalize(str) {
   return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/** Devuelve solo el primer nombre para usar en mensajes del bot. */
+function primerNombre(nombre) {
+  return (nombre || '').split(' ')[0] || '';
 }
 
 module.exports = { handleMessage };
