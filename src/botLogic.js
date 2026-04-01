@@ -258,7 +258,7 @@ async function handleAskingCity(phone, message, session) {
     email:         '',
     state:         session.tempData.state,
     city:          session.tempData.city,
-    colonia:       '',
+    cp:            '',
     species:       '',
     channel:       CHANNEL_PAQUETERIA.channel,
     channelDetail: CHANNEL_PAQUETERIA.detail,

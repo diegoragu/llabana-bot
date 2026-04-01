@@ -11,7 +11,7 @@
  *   F (5):  Acepta WhatsApp
  *   G (6):  Estado
  *   H (7):  Ciudad
- *   I (8):  Colonia
+ *   I (8):  CP
  *   J (9):  Total órdenes
  *   K (10): Monto gastado ($)
  *   L (11): Fecha última compra ← YYYY-MM-DD
@@ -61,7 +61,7 @@ const BASE = {
   ACE_WA:        5,
   ESTADO:        6,
   CIUDAD:        7,
-  COLONIA:       8,
+  CP:            8,
   TOTAL_ORD:     9,
   MONTO:         10,
   FECHA_COMPRA:  11,  // "Fecha última compra" — YYYY-MM-DD
@@ -179,7 +179,7 @@ async function findCustomer(phone) {
           email:       row[BASE.EMAIL]    || '',
           state:       row[BASE.ESTADO]   || '',
           city:        row[BASE.CIUDAD]   || '',
-          colonia:     row[BASE.COLONIA]  || '',
+          cp:          row[BASE.CP]       || '',
           segmento:    row[BASE.SEGMENTO] || '',
           tags:        row[BASE.TAGS]     || '',
           totalOrders: row[BASE.TOTAL_ORD]|| '0',
@@ -212,7 +212,7 @@ async function registerCustomer(data) {
   row[BASE.ACE_WA]     = 'Sí';
   row[BASE.ESTADO]     = data.state;
   row[BASE.CIUDAD]     = data.city;
-  row[BASE.COLONIA]    = data.colonia;
+  row[BASE.CP]         = data.cp;
   row[BASE.ORIGEN]     = data.origen  || 'WhatsApp';
   row[BASE.ENTRADA]    = data.origen === 'Shopify' ? 'Shopify' : 'Bot Llabana';
   row[BASE.FECHA_REG]  = now;
@@ -284,7 +284,7 @@ async function appendConversationLog(phone, userMsg, botMsg) {
  * @param {number} rowIndex  - Fila 1-based del cliente en la hoja
  * @param {object} fields    - { totalOrders?, totalSpent?, segmento? }
  */
-async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fechaCompra } = {}) {
+async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fechaCompra, name, phone, state, city, cp } = {}) {
   try {
     const sheets = await getSheets();
     const data   = [];
@@ -293,6 +293,11 @@ async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fe
     if (totalOrders !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.TOTAL_ORD)}${rowIndex}`,    values: [[totalOrders]]  });
     if (totalSpent  !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.MONTO)}${rowIndex}`,        values: [[totalSpent]]   });
     if (fechaCompra !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.FECHA_COMPRA)}${rowIndex}`, values: [[fechaCompra]]  });
+    if (name        !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.NOMBRE)}${rowIndex}`,       values: [[name]]         });
+    if (phone       !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.TELEFONO)}${rowIndex}`,     values: [[phone]]        });
+    if (state       !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.ESTADO)}${rowIndex}`,       values: [[state]]        });
+    if (city        !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.CIUDAD)}${rowIndex}`,       values: [[city]]         });
+    if (cp          !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.CP)}${rowIndex}`,           values: [[cp]]           });
     data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${rowIndex}`, values: [[nowMXDatetime()]] });
 
     await sheets.spreadsheets.values.batchUpdate({
@@ -402,7 +407,7 @@ async function findCustomerByEmail(email) {
           email:       row[BASE.EMAIL]     || '',
           state:       row[BASE.ESTADO]    || '',
           city:        row[BASE.CIUDAD]    || '',
-          colonia:     row[BASE.COLONIA]   || '',
+          cp:          row[BASE.CP]        || '',
           segmento:    row[BASE.SEGMENTO]  || '',
           tags:        row[BASE.TAGS]      || '',
           totalOrders: row[BASE.TOTAL_ORD] || '0',
@@ -673,6 +678,7 @@ function columnLetter(index) {
 }
 
 module.exports = {
+  formatPhoneForStorage,
   findCustomer,
   findCustomerByEmail,
   registerCustomer,

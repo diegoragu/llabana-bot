@@ -16,6 +16,7 @@
 
 const crypto = require('crypto');
 const sheetsService = require('./sheetsService');
+const { formatPhoneForStorage } = sheetsService;
 
 // ── Verificación HMAC ─────────────────────────────────────────────────────────
 
@@ -102,6 +103,11 @@ async function handleCustomerCreate(payload) {
     if (acceptsMarketing) {
       await sheetsService.updateEmailMarketing(existing.rowIndex, 'SI');
     }
+    // Guardar teléfono si el registro actual no tiene uno
+    if (payload.phone && !existing.phone) {
+      const formattedPhone = formatPhoneForStorage(payload.phone);
+      if (formattedPhone) await sheetsService.updateCustomerPhone(existing.rowIndex, formattedPhone);
+    }
     console.log(`   customers/create: ${email} ya existe → tag + marketing actualizado`);
     return;
   }
@@ -120,7 +126,7 @@ async function handleCustomerCreate(payload) {
     email,
     state,
     city,
-    colonia:       '',
+    cp:            '',
     species:       '',
     channel:       '',
     channelDetail: '',
@@ -230,6 +236,11 @@ async function handleOrderPaid(payload) {
     }
     if (shipping.province) updateFields.state = shipping.province;
     if (shipping.city)     updateFields.city  = shipping.city;
+    if (shipping.address1) updateFields.cp    = shipping.address1;
+    if (shipping.phone && !customer.phone) {
+      const formattedPhone = formatPhoneForStorage(shipping.phone);
+      if (formattedPhone) updateFields.phone = formattedPhone;
+    }
   }
 
   await sheetsService.updateOrderData(customer.rowIndex, updateFields);
