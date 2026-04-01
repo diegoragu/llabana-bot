@@ -78,6 +78,9 @@ const ESCALATION_PROFILE_PATTERNS = [
   /revendedor/i, /distribuidor/i, /por\s*mayor/i, /\bal\s*mayor\b/i,
 ];
 
+// Palabras que reinician la sesión desde cualquier estado
+const RESET_PATTERNS = /^(hola|inicio|men[uú]|empezar|reset|start|comenzar)$/i;
+
 // Patrones para omitir email
 const SKIP_EMAIL_PATTERNS = [
   /^no$/i, /^nop$/i, /^nope$/i, /^omitir$/i, /^omite$/i, /^sin correo$/i,
@@ -108,6 +111,11 @@ function isValidEmail(text) {
 // ── Punto de entrada ──────────────────────────────────────────────────────────
 
 async function handleMessage(phone, messageBody) {
+  // Palabra clave de reinicio → borrar sesión y empezar desde cero
+  if (RESET_PATTERNS.test(messageBody.trim())) {
+    sessionManager.deleteSession(phone);
+  }
+
   let session = sessionManager.getSession(phone);
 
   // ── Sesión nueva: buscar cliente por teléfono ─────────────────────────────
@@ -143,7 +151,9 @@ async function handleMessage(phone, messageBody) {
     case 'asking_name':             return handleAskingName(phone, messageBody, session);
     case 'asking_email':            return handleAskingEmail(phone, messageBody, session);
     case 'active':                  return handleActive(phone, messageBody, session);
-    case 'out_of_coverage':         return OUT_OF_COVERAGE_MSG;
+    case 'out_of_coverage':
+      sessionManager.deleteSession(phone);
+      return OUT_OF_COVERAGE_MSG;
     case 'escalated':
       return 'Tu mensaje ya fue enviado a un asesor. Pronto te contactan 🤝';
     default:
@@ -156,7 +166,7 @@ async function handleMessage(phone, messageBody) {
 
 async function handleAskingMexico(phone, message, session) {
   if (isOutsideMexico(message)) {
-    sessionManager.updateSession(phone, { flowState: 'out_of_coverage' });
+    sessionManager.deleteSession(phone);
     return OUT_OF_COVERAGE_MSG;
   }
   // Respuesta afirmativa o ambigua → asumir México, continuar
@@ -242,7 +252,7 @@ async function handleAskingState(phone, message, session) {
 
   // Detectar si menciona país extranjero en la respuesta del estado
   if (OUTSIDE_MEXICO_PATTERNS.some(re => re.test(state))) {
-    sessionManager.updateSession(phone, { flowState: 'out_of_coverage' });
+    sessionManager.deleteSession(phone);
     return OUT_OF_COVERAGE_MSG;
   }
 
