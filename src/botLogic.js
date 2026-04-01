@@ -28,10 +28,6 @@ const twilioService  = require('./twilioService');
 
 // ── Constantes y helpers de detección ────────────────────────────────────────
 
-const WELCOME_MSG =
-  '¡Hola! 👋 Soy el asistente de Llabana, tu aliado en alimento balanceado 🌾\n' +
-  '¿Estás en México?';
-
 const OUT_OF_COVERAGE_MSG =
   'Gracias por escribirnos 🙏 Por ahora solo tenemos entregas en México. ' +
   'Cuando estés por acá con gusto te ayudamos 🌾';
@@ -39,8 +35,36 @@ const OUT_OF_COVERAGE_MSG =
 const CHANNEL_PAQUETERIA = {
   channel: 'paqueteria',
   detail:  'Nacional',
-  message: 'Puedes hacer tu pedido en llabanaenlinea.com y te lo mandamos a todo México 📦',
 };
+
+// ── Variedad en mensajes ──────────────────────────────────────────────────────
+
+/** Elige un elemento al azar de un array. */
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+const WELCOME_VARIANTS = [
+  '¡Hola! 👋 Soy el asistente de Llabana, tu aliado en alimento balanceado 🌾 ¿Estás en México?',
+  '¡Bienvenido! 🌾 Soy el asistente de Llabana. ¿Nos escribes desde México?',
+  '¡Hola! 👋 Llabana, alimento balanceado para tus animales 🌾 ¿Estás en México?',
+];
+
+const GREETING_NAME_VARIANTS = [
+  n => `¡Mucho gusto, ${n}! 😊 ¿En qué te puedo ayudar hoy?`,
+  n => `¡Qué bueno que nos escribes, ${n}! ¿En qué te ayudo?`,
+  n => `Gracias ${n} 🌾 ¿Qué necesitas hoy?`,
+];
+
+const CHANNEL_VARIANTS = [
+  n => `¡Listo${n ? `, ${n}` : ''}! Puedes hacer tu pedido en llabanaenlinea.com y te lo mandamos a todo México 📦`,
+  _n => 'Te mandamos por paquetería a todo México 📦 Haz tu pedido en llabanaenlinea.com',
+  n => `Perfecto${n ? `, ${n}` : ''}. Entra a llabanaenlinea.com y pide desde ahí, llegamos a todo México 📦`,
+];
+
+const CLOSING_VARIANTS = [
+  '¿Tienes alguna duda más? 😊',
+  '¿Hay algo más en lo que te pueda ayudar?',
+  '¿Se te ofrece algo más? 🌾',
+];
 
 // Patrones para detectar que está fuera de México
 const OUTSIDE_MEXICO_PATTERNS = [
@@ -130,13 +154,13 @@ async function handleMessage(phone, messageBody) {
       ).catch(() => {});
 
       return customer.name
-        ? `¡Hola ${primerNombre(customer.name)}! 👋 Qué gusto verte de nuevo. ¿En qué te ayudo?`
-        : '¡Hola! 👋 Qué gusto verte de nuevo. ¿En qué te ayudo?';
+        ? `¡Hola ${primerNombre(customer.name)}! 👋 Qué gusto verte de nuevo. ¿En qué te puedo ayudar hoy?`
+        : '¡Hola! 👋 Qué gusto verte de nuevo. ¿En qué te puedo ayudar hoy?';
     }
 
-    // Cliente nuevo — enviar mensaje de bienvenida exacto
+    // Cliente nuevo — saludo inicial aleatorio
     sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
-    return WELCOME_MSG;
+    return pick(WELCOME_VARIANTS);
   }
 
   // ── Rutear por estado ─────────────────────────────────────────────────────
@@ -237,7 +261,7 @@ async function handleAskingName(phone, message, session) {
       flowState: 'asking_intent',
       tempData:  { ...session.tempData, name: nombre, nameAttempts: 0 },
     });
-    return `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar hoy?`;
+    return pick(GREETING_NAME_VARIANTS)(first);
   }
 
   if (attempts < 2) {
@@ -335,14 +359,14 @@ async function handleAskingCity(phone, message, session) {
     }).catch(() => {});
   }
 
-  const greeting = customerData.name ? `¡Listo, ${primerNombre(customerData.name)}! ` : '¡Listo! ';
+  const firstName = primerNombre(customerData.name);
   sessionManager.updateSession(phone, {
     flowState: 'active',
     customer:  { ...customerData, rowIndex },
     tempData:  {},
   });
 
-  return `${greeting}${CHANNEL_PAQUETERIA.message} ¿Tienes alguna duda más? 😊`;
+  return `${pick(CHANNEL_VARIANTS)(firstName)} ${pick(CLOSING_VARIANTS)}`;
 }
 
 // ── Conversación libre con Claude ─────────────────────────────────────────────
