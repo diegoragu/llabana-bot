@@ -360,15 +360,17 @@ async function handleAskingCp(phone, message, session) {
     return '¿Cuál es tu código postal? 📍 Son 5 dígitos, por ejemplo: 06600';
   }
 
-  const state   = cpToState(cp);
   const isLocal = cpIsCDMX(cp) || cpIsEdomex(cp);
+
+  // Enriquecer estado y ciudad desde la API de códigos postales
+  const { state, city } = await sheetsService.lookupCpMX(cp);
 
   const customerData = {
     phone,
     name:          session.tempData.name || '',
     email:         '',
-    state,
-    city:          '',
+    state:         state || cpToState(cp), // fallback si la API falla
+    city,
     cp,
     species:       '',
     channel:       CHANNEL_PAQUETERIA.channel,

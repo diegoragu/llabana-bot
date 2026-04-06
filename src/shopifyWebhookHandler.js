@@ -17,7 +17,7 @@
 
 const crypto = require('crypto');
 const sheetsService = require('./sheetsService');
-const { formatPhoneForStorage, limpiarNombre } = sheetsService;
+const { formatPhoneForStorage, limpiarNombre, lookupCpMX } = sheetsService;
 
 // ── Verificación HMAC ─────────────────────────────────────────────────────────
 
@@ -285,9 +285,22 @@ async function handleOrderPaid(payload) {
       const shippingName = limpiarNombre(`${(shipping.first_name || '').trim()} ${(shipping.last_name || '').trim()}`);
       if (shippingName) updateFields.name = shippingName;
     }
-    if (shipping.province) updateFields.state = shipping.province;
-    if (shipping.city)     updateFields.city  = shipping.city;
-    if (shipping.address1) updateFields.cp    = shipping.address1;
+
+    // Guardar CP desde el campo correcto (zip, no address1)
+    const zip = (shipping.zip || '').trim().replace(/\D/g, '');
+    if (zip) {
+      updateFields.cp = zip;
+      // Derivar estado y ciudad desde el CP
+      const { state: cpState, city: cpCity } = await lookupCpMX(zip);
+      if (cpState) updateFields.state = cpState;
+      else if (shipping.province) updateFields.state = shipping.province;
+      if (cpCity)  updateFields.city  = cpCity;
+      else if (shipping.city) updateFields.city = shipping.city;
+    } else {
+      if (shipping.province) updateFields.state = shipping.province;
+      if (shipping.city)     updateFields.city  = shipping.city;
+    }
+
     if (shipping.phone && !customer.phone) {
       const formattedPhone = formatPhoneForStorage(shipping.phone);
       if (formattedPhone) updateFields.phone = formattedPhone;

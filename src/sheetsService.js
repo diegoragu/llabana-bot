@@ -715,9 +715,33 @@ function columnLetter(index) {
   return letter;
 }
 
+/**
+ * Consulta estado y ciudad a partir de un CP mexicano usando zippopotam.us.
+ * Retorna { state, city } — strings vacíos si el CP no se encuentra o hay error.
+ */
+async function lookupCpMX(cp) {
+  try {
+    const res = await fetch(`https://api.zippopotam.us/MX/${cp}`);
+    if (!res.ok) return { state: '', city: '' };
+    const data = await res.json();
+    const place = data.places?.[0];
+    if (!place) return { state: '', city: '' };
+
+    let state = place.state || '';
+    if (/distrito\s*federal/i.test(state)) state = 'Ciudad de México';
+    if (/^m[eé]xico$/i.test(state))        state = 'Estado de México';
+
+    const city = place['place name'] || '';
+    return { state, city };
+  } catch {
+    return { state: '', city: '' };
+  }
+}
+
 module.exports = {
   limpiarNombre,
   formatPhoneForStorage,
+  lookupCpMX,
   findCustomer,
   findCustomerByEmail,
   registerCustomer,
