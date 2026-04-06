@@ -12,9 +12,27 @@ const twilioService = require('./twilioService');
  * Respondemos con 200 inmediatamente para evitar timeouts de Twilio (15s),
  * y procesamos el mensaje de forma asíncrona.
  */
+
+// Deduplicación: guarda los últimos 100 MessageSid procesados
+const processedSids = new Set();
+const MAX_SIDS = 100;
+
 async function webhookHandler(req, res) {
   // Responder a Twilio de inmediato
   res.status(200).send('');
+
+  // Deduplicar por MessageSid para evitar doble procesamiento
+  const sid = req.body?.MessageSid;
+  if (sid) {
+    if (processedSids.has(sid)) {
+      console.log(`⚠️  SID duplicado ignorado: ${sid}`);
+      return;
+    }
+    processedSids.add(sid);
+    if (processedSids.size > MAX_SIDS) {
+      processedSids.delete(processedSids.values().next().value);
+    }
+  }
 
   const from = req.body?.From;
   const body = (req.body?.Body || '').trim();
