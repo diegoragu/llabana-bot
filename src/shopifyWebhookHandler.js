@@ -164,7 +164,7 @@ function parseShopifyTags(rawTags) {
 }
 
 async function handleCustomerUpdate(payload) {
-  console.log('=== CUSTOMER UPDATE FULL PAYLOAD ===', JSON.stringify(payload, null, 2));
+  console.log('=== SHOPIFY CUSTOMER UPDATE RAW ===', JSON.stringify(payload, null, 2));
   const email = payload.email;
   if (!email) return;
 
