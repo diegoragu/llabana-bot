@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Llabana · Conversaciones</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --green: #2E7D32; --green-d: #1B5E20; --green-p: #E8F5E9;
+  --orange: #F57C00;
+  --bg: #F5F6F5; --surface: #fff; --border: #E0E5E0;
+  --text: #1A2E1A; --muted: #6B7E6B;
+  --sans: 'DM Sans', sans-serif; --mono: 'DM Mono', monospace;
+}
+body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 20px; height: 52px; display: flex; align-items: center;
+  justify-content: space-between; position: sticky; top: 0; z-index: 10;
+}
+.topbar-brand { display: flex; align-items: center; gap: 8px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #8BC34A; }
+.brand-name { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--green); }
+.btn-sm { font-size: 12px; padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; font-family: var(--sans); color: var(--muted); }
+.btn-sm:hover { border-color: var(--green); color: var(--green); }
+
+.layout { display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 52px); }
+
+.panel-left { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.pl-header { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.pl-label { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.pl-header input { width: 100%; padding: 8px 11px; border: 1.5px solid var(--border); border-radius: 7px; font-family: var(--sans); font-size: 13px; outline: none; background: var(--bg); }
+.pl-header input:focus { border-color: var(--green); background: white; }
+
+.conv-list { overflow-y: auto; flex: 1; }
+.conv-item { padding: 12px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.conv-item:hover { background: var(--green-p); }
+.conv-item.sel { background: var(--green-p); border-left: 3px solid var(--green); }
+.ci-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px; }
+.ci-name { font-size: 13px; font-weight: 600; }
+.ci-date { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+.ci-phone { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+.panel-right { display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
+.chat-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 20px; }
+.ch-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.ch-phone { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.chat-body { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 9px; }
+
+.msg-row { display: flex; align-items: flex-end; gap: 7px; }
+.msg-row.bot { flex-direction: row; }
+.msg-row.client { flex-direction: row-reverse; }
+.av { width: 27px; height: 27px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.av.b { background: var(--green); color: white; }
+.av.c { background: var(--orange); color: white; }
+.bubble { max-width: 70%; padding: 9px 13px; border-radius: 15px; font-size: 13px; line-height: 1.5; }
+.msg-row.bot .bubble { background: white; border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+.msg-row.client .bubble { background: var(--green); color: white; border-bottom-right-radius: 3px; }
+
+.empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); gap: 10px; text-align: center; padding: 40px; }
+.empty-icon { font-size: 36px; opacity: .3; }
+.empty-title { font-size: 15px; font-weight: 600; }
+.empty-sub { font-size: 12px; }
+
+@media (max-width: 700px) {
+  .layout { grid-template-columns: 1fr; }
+  .panel-right { display: none; position: fixed; inset: 52px 0 0; z-index: 20; }
+  .panel-right.open { display: flex; }
+  .back-btn { display: flex !important; }
+}
+.back-btn { display: none; align-items: center; gap: 5px; background: none; border: none; color: var(--green); font-family: var(--sans); font-size: 13px; cursor: pointer; margin-right: 10px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="dot"></div>
+    <span class="brand-name">LLABANA · CONVERSACIONES</span>
+  </div>
+  <button class="btn-sm" onclick="loadData()">↻ Actualizar</button>
+</div>
+
+<div class="layout">
+  <div class="panel-left">
+    <div class="pl-header">
+      <div class="pl-label">Chats</div>
+      <input type="text" id="search" placeholder="Buscar nombre o teléfono…" oninput="filter()">
+    </div>
+    <div class="conv-list" id="conv-list">
+      <div class="empty"><div class="empty-title">Cargando…</div></div>
+    </div>
+  </div>
+
+  <div class="panel-right" id="panel-right">
+    <div class="empty">
+      <div class="empty-icon">💬</div>
+      <div class="empty-title">Selecciona un chat</div>
+      <div class="empty-sub">Elige una conversación de la lista</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let all = [], selI = null;
+
+async function loadData() {
+  document.getElementById('conv-list').innerHTML = '<div class="empty"><div class="empty-title">Cargando…</div></div>';
+  try {
+    const r = await fetch('/api/transcripts');
+    if (!r.ok) throw new Error('Error ' + r.status);
+    all = await r.json();
+    filter();
+  } catch(e) {
+    document.getElementById('conv-list').innerHTML = `<div class="empty"><div class="empty-title">Error al cargar</div><div class="empty-sub">${e.message}</div></div>`;
+  }
+}
+
+function filter() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const r = q ? all.filter(c => (c.nombre||'').toLowerCase().includes(q) || (c.telefono||'').includes(q)) : all;
+  renderList(r);
+}
+
+function renderList(convs) {
+  const el = document.getElementById('conv-list');
+  if (!convs.length) { el.innerHTML = '<div class="empty"><div class="empty-title">Sin resultados</div></div>'; return; }
+  el.innerHTML = convs.map((c,i) => `
+    <div class="conv-item ${selI===i?'sel':''}" onclick="openConv(${i},this)">
+      <div class="ci-top">
+        <span class="ci-name">${esc(c.nombre||'Sin nombre')}</span>
+        <span class="ci-date">${esc(c.fecha)}</span>
+      </div>
+      <div class="ci-phone">${esc(c.telefono)}</div>
+    </div>`).join('');
+}
+
+function openConv(i, el) {
+  selI = i;
+  document.querySelectorAll('.conv-item').forEach(x => x.classList.remove('sel'));
+  el.classList.add('sel');
+  const c = all[i];
+  const msgs = parseTx(c.transcript||'');
+  const pr = document.getElementById('panel-right');
+  pr.classList.add('open');
+  pr.innerHTML = `
+    <div class="chat-header">
+      <div style="display:flex;align-items:center">
+        <button class="back-btn" onclick="document.getElementById('panel-right').classList.remove('open')">← Volver</button>
+        <div>
+          <div class="ch-name">${esc(c.nombre||'Sin nombre')}</div>
+          <div class="ch-phone">${esc(c.telefono)} · ${esc(c.fecha)}</div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-body" id="cb">
+      ${msgs.length ? msgs.map(m=>`
+        <div class="msg-row ${m.s}">
+          <div class="av ${m.s==='bot'?'b':'c'}">${m.s==='bot'?'B':'C'}</div>
+          <div class="bubble">${esc(m.t)}</div>
+        </div>`).join('') : '<div style="text-align:center;font-size:12px;color:var(--muted);padding:20px">Sin mensajes</div>'}
+    </div>`;
+  setTimeout(()=>{ const cb=document.getElementById('cb'); if(cb) cb.scrollTop=cb.scrollHeight; },50);
+}
+
+function parseTx(raw) {
+  return raw.split(/\\n|\n/).map(l=>l.trim()).filter(Boolean).map(l=>{
+    if(/^[Bb]ot:/.test(l)) return {s:'bot', t:l.replace(/^[Bb]ot:\s*/,'')};
+    if(/^[Cc]liente:/.test(l)) return {s:'client', t:l.replace(/^[Cc]liente:\s*/,'')};
+    return null;
+  }).filter(Boolean);
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+loadData();
+</script>
+</body>
+</html>

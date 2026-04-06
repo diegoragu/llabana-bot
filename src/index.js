@@ -1,8 +1,10 @@
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
+const path = require('path');
 const webhookHandler = require('./webhookHandler');
 const shopifyWebhookHandler = require('./shopifyWebhookHandler');
+const { getTranscripts } = require('./transcriptService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,6 +29,18 @@ app.get('/health', (req, res) => {
 });
 
 app.post('/webhook/whatsapp', webhookHandler);
+
+app.use('/dashboard', express.static(path.join(__dirname, '../public')));
+
+app.get('/api/transcripts', async (req, res) => {
+  try {
+    const data = await getTranscripts();
+    res.json(data);
+  } catch (err) {
+    console.error('[API] Error transcripts:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada' });
