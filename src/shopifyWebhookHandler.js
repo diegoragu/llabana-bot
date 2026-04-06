@@ -163,6 +163,7 @@ function parseShopifyTags(rawTags) {
 }
 
 async function handleCustomerUpdate(payload) {
+  console.log('CUSTOMER UPDATE PAYLOAD tags:', payload.tags, '| accepts_marketing:', payload.accepts_marketing);
   const email = payload.email;
   if (!email) return;
 
