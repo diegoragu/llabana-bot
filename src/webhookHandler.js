@@ -34,6 +34,8 @@ async function webhookHandler(req, res) {
     }
   }
 
+  console.log('TWILIO PAYLOAD COMPLETO:', JSON.stringify(req.body));
+
   const from = req.body?.From;
   const body = (req.body?.Body || '').trim();
 
