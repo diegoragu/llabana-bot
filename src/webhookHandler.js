@@ -1,5 +1,6 @@
 const botLogic    = require('./botLogic');
 const twilioService = require('./twilioService');
+const { saveTranscript } = require('./transcriptService');
 
 /**
  * Maneja el webhook POST de Twilio para mensajes de WhatsApp entrantes.
@@ -16,6 +17,8 @@ const twilioService = require('./twilioService');
 // Deduplicación: guarda los últimos 100 MessageSid procesados
 const processedSids = new Set();
 const MAX_SIDS = 100;
+
+const chatLogs = new Map();
 
 async function webhookHandler(req, res) {
   // Responder a Twilio de inmediato
@@ -45,8 +48,15 @@ async function webhookHandler(req, res) {
   console.log(`📨 [${from}]: ${body}`);
 
   try {
+    if (!chatLogs.has(from)) chatLogs.set(from, { lines: [], lastActivity: Date.now() });
+    const log = chatLogs.get(from);
+    log.lines.push(`Cliente: ${body}`);
+    log.lastActivity = Date.now();
+
     const reply = await botLogic.handleMessage(from, body);
     await twilioService.sendMessage(from, reply);
+
+    log.lines.push(`Bot: ${reply}`);
     console.log(`📤 [${from}]: ${reply.substring(0, 120)}${reply.length > 120 ? '…' : ''}`);
   } catch (err) {
     console.error(`❌ Error procesando mensaje de ${from}:`, err);
@@ -60,5 +70,17 @@ async function webhookHandler(req, res) {
     }
   }
 }
+
+setInterval(async () => {
+  const TREINTA_MIN = 30 * 60 * 1000;
+  const ahora = Date.now();
+  for (const [phone, log] of chatLogs.entries()) {
+    if (ahora - log.lastActivity > TREINTA_MIN) {
+      await saveTranscript('', phone.replace('whatsapp:', ''), log.lines.join('\n'));
+      chatLogs.delete(phone);
+      console.log(`💾 Transcript guardado: ${phone}`);
+    }
+  }
+}, 60 * 1000);
 
 module.exports = webhookHandler;
