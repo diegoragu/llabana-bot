@@ -344,7 +344,7 @@ async function handleAskingCity(phone, message, session) {
     phone,
     name:          session.tempData.name || '',
     email:         '',
-    state:         session.tempData.state,
+    state:         session.tempData.state || '',
     city:          capitalize(city),
     cp:            '',
     species:       '',
@@ -451,8 +451,8 @@ async function notifyWig(phone, session, motivo = '') {
     `🚨 *ESCALACIÓN*\n\n` +
     `📱 Tel:      ${phone}\n` +
     `👤 Nombre:   ${customer.name || tempData.name || 'N/D'}\n` +
-    `📍 Estado:   ${customer.state || tempData.state || 'N/D'}\n` +
-    `🏙️ Ciudad:  ${customer.city  || tempData.city  || 'N/D'}\n` +
+    `📍 Estado:   ${customer.state || tempData.state || session.tempData?.state || 'N/D'}\n` +
+    `🏙️ Ciudad:  ${customer.city  || tempData.city  || session.tempData?.city  || 'N/D'}\n` +
     `💬 Consulta: ${tempData.intent || customer.segmento || 'N/D'}\n` +
     `📌 Motivo:   ${motivo}\n\n` +
     `*Conversación:*\n${transcript}`;

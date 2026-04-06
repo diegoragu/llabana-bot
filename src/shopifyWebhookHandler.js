@@ -151,13 +151,14 @@ const SHOPIFY_SYSTEM_TAGS = /^(judge\.me|login with shop|shop|shopify)/i;
 
 /**
  * Parsea el campo "tags" del payload de customers/update.
- * Devuelve un Set de tags limpios, filtrando los de sistema de Shopify.
+ * Devuelve un Set de tags en minúsculas, filtrando los de sistema de Shopify.
+ * Case-insensitive: compara siempre en lowercase.
  */
 function parseShopifyTags(rawTags) {
   if (!rawTags) return new Set();
   return new Set(
     rawTags.split(',')
-      .map(t => t.trim())
+      .map(t => t.trim().toLowerCase())
       .filter(t => t && !SHOPIFY_SYSTEM_TAGS.test(t))
   );
 }
@@ -167,13 +168,13 @@ async function handleCustomerUpdate(payload) {
   const email = payload.email;
   if (!email) return;
 
-  const hasMarketingChange = !!payload.accepts_marketing;
+  const marketingValue     = payload.accepts_marketing !== undefined ? (payload.accepts_marketing ? 'SI' : 'NO') : null;
   const hasFirstName       = !!(payload.first_name || '').trim();
   const shopifyTags        = parseShopifyTags(payload.tags);
-  const hasCarrito         = shopifyTags.has('Carrito abandonado');
-  const hasSoloCuenta      = shopifyTags.has('Solo cuenta');
+  const hasCarrito         = shopifyTags.has('carrito abandonado');
+  const hasSoloCuenta      = shopifyTags.has('solo cuenta');
 
-  if (!hasMarketingChange && !hasFirstName && !hasCarrito && !hasSoloCuenta) return;
+  if (!marketingValue && !hasFirstName && !hasCarrito && !hasSoloCuenta) return;
 
   const existing = await sheetsService.findCustomerByEmail(email);
   if (!existing) {
@@ -183,8 +184,8 @@ async function handleCustomerUpdate(payload) {
 
   const seg = existing.segmento || '';
 
-  if (hasMarketingChange) {
-    await sheetsService.updateEmailMarketing(existing.rowIndex, 'SI');
+  if (marketingValue) {
+    await sheetsService.updateEmailMarketing(existing.rowIndex, marketingValue);
   }
 
   // Actualizar nombre si el actual está vacío o tiene solo 1 palabra
@@ -204,13 +205,13 @@ async function handleCustomerUpdate(payload) {
     console.log(`   🛒 customers/update: ${email} → Carrito abandonado (via tag Shopify Flow)`);
   }
 
-  // Tag "Solo cuenta" → agregar al historial si el segmento es Lead frío
-  if (hasSoloCuenta && seg === 'Lead frío') {
+  // Tag "Solo cuenta" → agregar al historial solo si el segmento es Lead frío o está vacío
+  if (hasSoloCuenta && (seg === 'Lead frío' || !seg)) {
     await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
     console.log(`   customers/update: ${email} → tag "Solo cuenta" registrado`);
   }
 
-  console.log(`   ✅ customers/update: ${email} | mkt=${hasMarketingChange} carrito=${hasCarrito} soloCuenta=${hasSoloCuenta}`);
+  console.log(`   ✅ customers/update: ${email} | mkt=${marketingValue} carrito=${hasCarrito} soloCuenta=${hasSoloCuenta}`);
 }
 
 // ── Evento: checkouts/create (carrito abandonado) ─────────────────────────────
