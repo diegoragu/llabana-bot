@@ -383,7 +383,7 @@ async function handleAskingCity(phone, message, session) {
       tempData:  {},
     });
     await notifyWig(phone, updatedSession,
-      `Zona local (${session.tempData.state} / ${customerData.city}): requiere coordinar entrega`);
+      `Zona local (${customerData.state} / ${customerData.city}): requiere coordinar entrega`);
     const firstName = primerNombre(customerData.name);
     return firstName
       ? `¡Listo, ${firstName}! 😊 Un asesor de Llabana se pondrá en contacto contigo en breve por este mismo WhatsApp para ayudarte. ¡Estamos para servirte!`
@@ -463,8 +463,8 @@ async function notifyWig(phone, session, motivo = '') {
   console.log(`📤 Intentando notificar a Wig | to: ${wigNumber} | motivo: ${motivo}`);
   console.log(`🔍 notifyWig state debug | customer.state="${customer.state}" | tempData.state="${tempData.state}" | session.tempData?.state="${session.tempData?.state}"`);
   try {
-    await twilioService.sendMessage(wigNumber, msg);
-    console.log(`📲 Wig notificado exitosamente — ${phone} | ${motivo}`);
+    const result = await twilioService.sendMessage(wigNumber, msg);
+    console.log(`📲 Wig notificado | sid: ${result.sid} | status: ${result.status} | errorCode: ${result.errorCode ?? 'none'} | errorMsg: ${result.errorMessage ?? 'none'}`);
   } catch (err) {
     console.error(`❌ Error notificando a Wig | code: ${err.code} | status: ${err.status} | msg: ${err.message} | moreInfo: ${err.moreInfo}`);
   }
