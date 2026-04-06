@@ -8,9 +8,8 @@
  *   asking_returning       → ¿ya compró antes?                    → asking_returning_email | asking_name
  *   asking_returning_email → busca por email                      → active | asking_name
  *   asking_name            → nombre (máx 2 reintentos)            → asking_intent
- *   asking_intent          → pregunta abierta; Claude clasifica    → escalated | asking_state
- *   asking_state           → pide estado                          → asking_city
- *   asking_city            → REGISTRA EN SHEETS, informa canal    → active
+ *   asking_intent          → pregunta abierta; Claude clasifica    → escalated | asking_cp
+ *   asking_cp              → pide CP; deriva estado y canal       → waiting_for_wig | active
  *   active                 → Claude libre                          → waiting_for_wig
  *
  * Cliente EXISTENTE (encontrado por teléfono):
@@ -170,8 +169,7 @@ async function handleMessage(phone, messageBody) {
     case 'asking_returning_email':  return handleAskingReturningEmail(phone, messageBody, session);
     case 'asking_name':             return handleAskingName(phone, messageBody, session);
     case 'asking_intent':           return handleAskingIntent(phone, messageBody, session);
-    case 'asking_state':            return handleAskingState(phone, messageBody, session);
-    case 'asking_city':             return handleAskingCity(phone, messageBody, session);
+    case 'asking_cp':               return handleAskingCp(phone, messageBody, session);
     case 'active':                  return handleActive(phone, messageBody, session);
     case 'out_of_coverage':
       sessionManager.deleteSession(phone);
@@ -193,6 +191,14 @@ async function handleAskingMexico(phone, message, session) {
     sessionManager.deleteSession(phone);
     return OUT_OF_COVERAGE_MSG;
   }
+
+  // Validar que el número de WhatsApp sea mexicano (+52)
+  if (!phone.startsWith('whatsapp:+52')) {
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    await notifyWig(phone, session, `Número no mexicano: ${phone}`);
+    return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor para que te ayude.';
+  }
+
   // Respuesta afirmativa o ambigua → asumir México, continuar
   sessionManager.updateSession(phone, { flowState: 'asking_returning' });
   return '¿Ya has comprado con nosotros antes o es tu primera vez?';
@@ -295,58 +301,59 @@ async function handleAskingIntent(phone, message, session) {
     return 'Ahorita te conecto con un asesor 🙌';
   }
 
-  // Pregunta de precio → informar y pedir ubicación
+  // Pregunta de precio → informar y pedir CP
   if (isPriceQuestion(message)) {
-    sessionManager.updateSession(phone, { flowState: 'asking_state' });
+    sessionManager.updateSession(phone, { flowState: 'asking_cp' });
     return (
       'Los precios y disponibilidad los encuentras en nuestra tienda en línea 🛒\n' +
       'llabanaenlinea.com\n\n' +
-      '¿De qué estado eres? Así te digo cómo te llega tu pedido 📦'
+      '¿Cuál es tu código postal? 📍 Con eso verifico qué opciones de entrega tenemos disponibles para ti.'
     );
   }
 
-  // Cualquier otra consulta → pedir ubicación
-  sessionManager.updateSession(phone, { flowState: 'asking_state' });
-  return '¿De qué estado eres? 📍';
+  // Cualquier otra consulta → pedir CP
+  sessionManager.updateSession(phone, { flowState: 'asking_cp' });
+  return '¿Cuál es tu código postal? 📍 Con eso verifico qué opciones de entrega tenemos disponibles para ti.';
 }
 
-// ── Paso 5: Ubicación ─────────────────────────────────────────────────────────
+// ── Paso 5: Código postal → canal ─────────────────────────────────────────────
 
-// TODO: reemplazar con búsqueda en pestaña "3 Rutas Reparto" cuando esté disponible
-const CDMX_PATTERN   = /^(ciudad\s+de\s+m[eé]xico|cdmx|df)$/i;
-const EDOMEX_PATTERN = /^(estado\s+de\s+m[eé]xico|edomex|edo\.?\s*m[eé]x\.?)$/i;
-
-function isLocalDeliveryZone(state) {
-  const s = (state || '').trim();
-  return CDMX_PATTERN.test(s) || EDOMEX_PATTERN.test(s);
+/** CP 01000–16999 → CDMX */
+function cpIsCDMX(cp) {
+  const n = parseInt(cp, 10);
+  return n >= 1000 && n <= 16999;
 }
 
-async function handleAskingState(phone, message, session) {
-  const state = message.trim();
-  if (state.length < 2) return '¿De qué estado eres?';
+/** CP 50000–57999 (prefijo 50–57) → Estado de México */
+function cpIsEdomex(cp) {
+  const s = cp.toString().padStart(5, '0');
+  const prefix = parseInt(s.substring(0, 2), 10);
+  return prefix >= 50 && prefix <= 57;
+}
 
-  // Detectar si menciona país extranjero en la respuesta del estado
-  if (OUTSIDE_MEXICO_PATTERNS.some(re => re.test(state))) {
-    sessionManager.deleteSession(phone);
-    return OUT_OF_COVERAGE_MSG;
+/** Deriva el nombre del estado a partir del CP. */
+function cpToState(cp) {
+  if (cpIsCDMX(cp))   return 'Ciudad de México';
+  if (cpIsEdomex(cp)) return 'Estado de México';
+  return '';
+}
+
+async function handleAskingCp(phone, message, session) {
+  const cp = message.trim().replace(/\D/g, '');
+  if (cp.length < 4 || cp.length > 5) {
+    return '¿Cuál es tu código postal? 📍 Son 5 dígitos, por ejemplo: 06600';
   }
 
-  session.tempData.state = capitalize(state);
-  sessionManager.updateSession(phone, { flowState: 'asking_city', tempData: session.tempData });
-  return '¿Y de qué ciudad o municipio?';
-}
-
-async function handleAskingCity(phone, message, session) {
-  const city = message.trim();
-  if (city.length < 2) return '¿De qué ciudad o municipio?';
+  const state   = cpToState(cp);
+  const isLocal = cpIsCDMX(cp) || cpIsEdomex(cp);
 
   const customerData = {
     phone,
     name:          session.tempData.name || '',
     email:         '',
-    state:         session.tempData.state || '',
-    city:          capitalize(city),
-    cp:            '',
+    state,
+    city:          '',
+    cp,
     species:       '',
     channel:       CHANNEL_PAQUETERIA.channel,
     channelDetail: CHANNEL_PAQUETERIA.detail,
@@ -358,32 +365,30 @@ async function handleAskingCity(phone, message, session) {
   try {
     rowIndex = await sheetsService.registerCustomer(customerData);
   } catch (err) {
-    console.error('Error al registrar cliente en handleAskingCity:', err.message);
+    console.error('Error al registrar cliente en handleAskingCp:', err.message);
   }
 
-  // Guardar consulta inicial en Notas si existe
   if (rowIndex && session.tempData.intent) {
     sheetsService.updateOrderData(rowIndex, {
       notas: `Consulta: ${session.tempData.intent}`,
     }).catch(() => {});
   }
 
-  // Actualizar sesión con los datos del cliente (necesario antes de notifyWig)
   const updatedSession = {
     ...session,
     customer: { ...customerData, rowIndex },
-    tempData: { ...session.tempData, city: customerData.city },
+    tempData: {},
   };
 
-  // TODO: reemplazar con búsqueda en pestaña "3 Rutas Reparto" cuando esté disponible
-  if (isLocalDeliveryZone(session.tempData.state)) {
+  if (isLocal) {
+    const zone = cpIsCDMX(cp) ? 'CDMX' : 'Estado de México';
     sessionManager.updateSession(phone, {
       flowState: 'waiting_for_wig',
       customer:  updatedSession.customer,
       tempData:  {},
     });
     await notifyWig(phone, updatedSession,
-      `Zona local (${customerData.state} / ${customerData.city}): requiere coordinar entrega`);
+      `Zona local (${zone} / CP: ${cp}): requiere coordinar entrega`);
     const firstName = primerNombre(customerData.name);
     return firstName
       ? `¡Listo, ${firstName}! 😊 Un asesor de Llabana se pondrá en contacto contigo en breve por este mismo WhatsApp para ayudarte. ¡Estamos para servirte!`
