@@ -1,5 +1,7 @@
 const twilio = require('twilio');
 
+console.log('📱 Twilio FROM number:', process.env.TWILIO_WHATSAPP_NUMBER);
+
 const client = twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
