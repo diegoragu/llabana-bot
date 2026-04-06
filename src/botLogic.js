@@ -384,7 +384,10 @@ async function handleAskingCity(phone, message, session) {
     });
     await notifyWig(phone, updatedSession,
       `Zona local (${session.tempData.state} / ${customerData.city}): requiere coordinar entrega`);
-    return 'Ahorita te conecto con un asesor para coordinar tu entrega 🙌';
+    const firstName = primerNombre(customerData.name);
+    return firstName
+      ? `¡Listo, ${firstName}! 😊 Un asesor de Llabana se pondrá en contacto contigo en breve por este mismo WhatsApp para ayudarte. ¡Estamos para servirte!`
+      : '¡Listo! 😊 Un asesor de Llabana se pondrá en contacto contigo en breve por este mismo WhatsApp para ayudarte. ¡Estamos para servirte!';
   }
 
   const firstName = primerNombre(customerData.name);
@@ -457,11 +460,12 @@ async function notifyWig(phone, session, motivo = '') {
     `📌 Motivo:   ${motivo}\n\n` +
     `*Conversación:*\n${transcript}`;
 
+  console.log(`📤 Intentando notificar a Wig | to: ${wigNumber} | motivo: ${motivo}`);
   try {
     await twilioService.sendMessage(wigNumber, msg);
-    console.log(`📲 Wig notificado — ${phone} | ${motivo}`);
+    console.log(`📲 Wig notificado exitosamente — ${phone} | ${motivo}`);
   } catch (err) {
-    console.error('Error notificando a Wig:', err.message);
+    console.error(`❌ Error notificando a Wig | code: ${err.code} | status: ${err.status} | msg: ${err.message} | moreInfo: ${err.moreInfo}`);
   }
 }
 
