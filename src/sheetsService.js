@@ -251,7 +251,7 @@ async function registerCustomer(data) {
   row[BASE.CIUDAD]     = data.city;
   row[BASE.CP]         = data.cp;
   row[BASE.ORIGEN]     = data.origen  || 'WhatsApp';
-  row[BASE.ENTRADA]    = data.origen === 'Shopify' ? 'Shopify' : 'Bot Llabana';
+  row[BASE.ENTRADA]    = data.origen === 'Shopify' ? 'Shopify' : (data.entryPoint || 'Bot Llabana');
   row[BASE.FECHA_REG]  = now;
   row[BASE.ASESORIA]   = '';  // se llena durante la conversación por appendConversationLog
   row[BASE.NOTAS]      = [

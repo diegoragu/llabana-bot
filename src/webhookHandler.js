@@ -42,10 +42,11 @@ async function webhookHandler(req, res) {
     return;
   }
 
-  console.log(`📨 [${from}]: ${body}`);
+  const ref = (req.body?.ReferralBody || '').trim();
+  console.log(`📨 [${from}]: ${body}${ref ? ` | ref: ${ref}` : ''}`);
 
   try {
-    const reply = await botLogic.handleMessage(from, body);
+    const reply = await botLogic.handleMessage(from, body, ref);
     await twilioService.sendMessage(from, reply);
     console.log(`📤 [${from}]: ${reply.substring(0, 120)}${reply.length > 120 ? '…' : ''}`);
   } catch (err) {

@@ -36,6 +36,17 @@ const CHANNEL_PAQUETERIA = {
   detail:  'Nacional',
 };
 
+const ENTRY_POINTS = {
+  'google-business':  'Google Business',
+  'facebook':         'Facebook',
+  'llabana-header':   'llabana.com - Header',
+  'llabana-footer':   'llabana.com - Footer',
+  'llabana-chatbot':  'llabana.com - Chatbot',
+  'llabana-producto': 'llabana.com - Producto',
+  'llosa-producto':   'llabanaenlinea.com - Producto',
+  'llosa-chatbot':    'llabanaenlinea.com - Chatbot',
+};
+
 // ── Variedad en mensajes ──────────────────────────────────────────────────────
 
 /** Elige un elemento al azar de un array. */
@@ -132,7 +143,7 @@ function isValidEmail(text) {
 
 // ── Punto de entrada ──────────────────────────────────────────────────────────
 
-async function handleMessage(phone, messageBody) {
+async function handleMessage(phone, messageBody, ref = '') {
   // Palabra clave de reinicio → borrar sesión y empezar desde cero
   if (RESET_PATTERNS.test(messageBody.trim())) {
     sessionManager.deleteSession(phone);
@@ -142,7 +153,12 @@ async function handleMessage(phone, messageBody) {
 
   // ── Sesión nueva: buscar cliente por teléfono ─────────────────────────────
   if (!session) {
+    const entryPoint = ENTRY_POINTS[ref] || 'Directo';
+    console.log(`📍 Punto de entrada: ${entryPoint}${ref ? ` (ref: ${ref})` : ''}`);
+
     session = sessionManager.createSession(phone);
+    sessionManager.updateSession(phone, { entryPoint });
+
     const customer = await sheetsService.findCustomer(phone);
 
     if (customer) {
@@ -359,6 +375,7 @@ async function handleAskingCp(phone, message, session) {
     channelDetail: CHANNEL_PAQUETERIA.detail,
     segmento:      'Lead frío',
     aceWa:         'SI',
+    entryPoint:    session.entryPoint || 'Directo',
   };
 
   let rowIndex = null;
