@@ -164,7 +164,10 @@ function parseShopifyTags(rawTags) {
 }
 
 async function handleCustomerUpdate(payload) {
-  console.log('=== SHOPIFY CUSTOMER UPDATE RAW ===', JSON.stringify(payload, null, 2));
+  console.log('=== SHOPIFY RAW PAYLOAD customers/update ===', JSON.stringify(payload, null, 2));
+  console.log('tags type:', typeof payload.tags, '| value:', payload.tags);
+  console.log('accepts_marketing type:', typeof payload.accepts_marketing, '| value:', payload.accepts_marketing);
+  console.log('email_marketing_consent:', JSON.stringify(payload.email_marketing_consent));
   const email = payload.email;
   if (!email) return;
 
