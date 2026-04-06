@@ -18,6 +18,8 @@ const processedSids = new Set();
 const MAX_SIDS = 100;
 
 async function webhookHandler(req, res) {
+  console.log('=== TWILIO FULL BODY ===', JSON.stringify(req.body, null, 2));
+
   // Responder a Twilio de inmediato
   res.status(200).send('');
 
