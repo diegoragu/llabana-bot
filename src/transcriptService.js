@@ -58,4 +58,44 @@ async function getTranscripts() {
     .reverse();
 }
 
-module.exports = { saveTranscript, getTranscripts };
+async function updateTranscript(telefono, transcript) {
+  const sheets = getSheets();
+  const telefono_clean = telefono.replace('whatsapp:', '').replace(/^\+?52/, '');
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${SHEET}!A2:D`,
+  });
+
+  const rows = res.data.values || [];
+  const rowIndex = rows.findIndex(r => (r[2] || '').replace(/^\+?52/, '').replace(/\D/g, '').slice(-10) === telefono_clean.replace(/\D/g, '').slice(-10));
+
+  const fecha = new Date().toLocaleString('es-MX', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false
+  });
+
+  if (rowIndex !== -1) {
+    const sheetRow = rowIndex + 2; // +1 por header, +1 por base-1
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET}!A${sheetRow}:D${sheetRow}`,
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[fecha, rows[rowIndex][1] || '', rows[rowIndex][2] || '', transcript]]
+      }
+    });
+  } else {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET}!A:D`,
+      valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: {
+        values: [[fecha, '', telefono, transcript]]
+      }
+    });
+  }
+}
+
+module.exports = { saveTranscript, getTranscripts, updateTranscript };
