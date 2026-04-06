@@ -153,7 +153,7 @@ async function handleMessage(phone, messageBody, ref = '') {
 
   // ── Sesión nueva: buscar cliente por teléfono ─────────────────────────────
   if (!session) {
-    const entryPoint = ENTRY_POINTS[ref] || 'Directo';
+    const entryPoint = ENTRY_POINTS[ref] || 'Google Business';
     console.log(`📍 Punto de entrada: ${entryPoint}${ref ? ` (ref: ${ref})` : ''}`);
 
     session = sessionManager.createSession(phone);
@@ -375,7 +375,7 @@ async function handleAskingCp(phone, message, session) {
     channelDetail: CHANNEL_PAQUETERIA.detail,
     segmento:      'Lead frío',
     aceWa:         'SI',
-    entryPoint:    session.entryPoint || 'Directo',
+    entryPoint:    session.entryPoint || 'Google Business',
   };
 
   let rowIndex = null;
