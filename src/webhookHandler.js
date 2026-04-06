@@ -18,8 +18,6 @@ const processedSids = new Set();
 const MAX_SIDS = 100;
 
 async function webhookHandler(req, res) {
-  console.log('=== TWILIO FULL BODY ===', JSON.stringify(req.body, null, 2));
-
   // Responder a Twilio de inmediato
   res.status(200).send('');
 
@@ -36,8 +34,6 @@ async function webhookHandler(req, res) {
     }
   }
 
-  console.log('TWILIO PAYLOAD COMPLETO:', JSON.stringify(req.body));
-
   const from = req.body?.From;
   const body = (req.body?.Body || '').trim();
 
@@ -46,11 +42,10 @@ async function webhookHandler(req, res) {
     return;
   }
 
-  const ref = (req.body?.ReferralBody || '').trim();
-  console.log(`📨 [${from}]: ${body}${ref ? ` | ref: ${ref}` : ''}`);
+  console.log(`📨 [${from}]: ${body}`);
 
   try {
-    const reply = await botLogic.handleMessage(from, body, ref);
+    const reply = await botLogic.handleMessage(from, body);
     await twilioService.sendMessage(from, reply);
     console.log(`📤 [${from}]: ${reply.substring(0, 120)}${reply.length > 120 ? '…' : ''}`);
   } catch (err) {
