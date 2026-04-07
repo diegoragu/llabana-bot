@@ -104,7 +104,7 @@ const PRICE_PATTERNS = [
 ];
 
 // Palabras que reinician la sesión desde cualquier estado
-const RESET_PATTERNS = /^(hola|inicio|men[uú]|empezar|reset|start|comenzar)$/i;
+const RESET_PATTERNS = /^(inicio|men[uú]|empezar|reset|start|comenzar|nueva\s*consulta|reiniciar)$/i;
 
 function isOutsideMexico(text) {
   return /^no$/i.test(text.trim()) || OUTSIDE_MEXICO_PATTERNS.some(re => re.test(text));
@@ -138,6 +138,17 @@ async function handleMessage(phone, messageBody) {
     sessionManager.deleteSession(phone);
   }
 
+  // "hola" con sesión activa → preguntar si quiere nueva consulta
+  const existingSession = sessionManager.getSession(phone);
+  if (existingSession && /^hola$/i.test(messageBody.trim())) {
+    existingSession.tempData = {
+      ...existingSession.tempData,
+      _prevState: existingSession.flowState,
+    };
+    sessionManager.updateSession(phone, { flowState: 'confirming_reset', tempData: existingSession.tempData });
+    return '¿Quieres empezar una nueva consulta o seguimos con lo que teníamos? 😊';
+  }
+
   let session = sessionManager.getSession(phone);
 
   // ── Sesión nueva: buscar cliente por teléfono ─────────────────────────────
@@ -165,6 +176,7 @@ async function handleMessage(phone, messageBody) {
 
   // ── Rutear por estado ─────────────────────────────────────────────────────
   switch (session.flowState) {
+    case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
     case 'asking_mexico':           return handleAskingMexico(phone, messageBody, session);
     case 'asking_returning':        return handleAskingReturning(phone, messageBody, session);
     case 'asking_returning_email':  return handleAskingReturningEmail(phone, messageBody, session);
@@ -182,6 +194,34 @@ async function handleMessage(phone, messageBody) {
     default:
       sessionManager.deleteSession(phone);
       return 'Algo salió mal. Escríbeme de nuevo.';
+  }
+}
+
+// ── Confirmar reset desde "hola" ──────────────────────────────────────────────
+
+const CONFIRM_RESET_PATTERNS = /^(s[ií]|empezar|nueva|nuevo|de\s*nuevo|empezar\s*de\s*nuevo|nueva\s*consulta)$/i;
+
+async function handleConfirmingReset(phone, message, session) {
+  if (CONFIRM_RESET_PATTERNS.test(message.trim())) {
+    sessionManager.deleteSession(phone);
+    sessionManager.createSession(phone);
+    sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
+    return pick(WELCOME_VARIANTS);
+  }
+
+  // Continuar con el estado anterior
+  const prevState = session.tempData?._prevState || 'active';
+  sessionManager.updateSession(phone, { flowState: prevState });
+  const restored = sessionManager.getSession(phone);
+
+  switch (prevState) {
+    case 'asking_mexico':          return handleAskingMexico(phone, message, restored);
+    case 'asking_returning':       return handleAskingReturning(phone, message, restored);
+    case 'asking_returning_email': return handleAskingReturningEmail(phone, message, restored);
+    case 'asking_name':            return handleAskingName(phone, message, restored);
+    case 'asking_intent':          return handleAskingIntent(phone, message, restored);
+    case 'asking_cp':              return handleAskingCp(phone, message, restored);
+    default:                       return handleActive(phone, message, restored);
   }
 }
 
