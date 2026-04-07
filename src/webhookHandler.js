@@ -62,7 +62,8 @@ async function webhookHandler(req, res) {
 
     const session = sessionManager.getSession(from);
     const nombre = session?.customer?.name || session?.tempData?.name || '';
-    await updateTranscript(from, nombre, log.lines.join('\n'));
+    const telefono = from.replace('whatsapp:', '');
+    await updateTranscript(telefono, nombre, log.lines.join('\n'));
   } catch (err) {
     console.error(`❌ Error procesando mensaje de ${from}:`, err);
     try {
