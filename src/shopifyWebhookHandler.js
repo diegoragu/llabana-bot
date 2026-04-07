@@ -230,23 +230,31 @@ function parseShopifyTags(rawTags) {
 
 async function handleCustomerUpdate(payload) {
   const email      = payload.email;
-  const customerId = payload.id;
+  // Usar admin_graphql_api_id para evitar pérdida de precisión con IDs grandes
+  const customerId = payload.admin_graphql_api_id?.split('/').pop() ?? String(payload.id);
   if (!email) return;
 
-  // accepts_marketing viene en email_marketing_consent, no en accepts_marketing
-  const consent        = payload.email_marketing_consent;
-  const marketingValue = consent?.state === 'subscribed'   ? 'SI'
-                       : consent?.state === 'unsubscribed' ? 'NO'
-                       : null;
+  // Tags y marketing reales via Admin API
+  let shopifyTags    = new Set();
+  let marketingValue = null;
 
-  const hasFirstName = !!(payload.first_name || '').trim();
-
-  // Tags reales via Admin API (payload.tags siempre viene vacío en customers/update)
-  let shopifyTags = new Set();
   if (customerId) {
     const customer = await fetchShopifyCustomer(customerId);
     if (customer?.tags) shopifyTags = parseShopifyTags(customer.tags);
+    // marketing desde el customer completo de la API
+    const apiConsent = customer?.email_marketing_consent;
+    if (apiConsent?.state === 'subscribed')        marketingValue = 'SI';
+    else if (apiConsent?.state === 'unsubscribed') marketingValue = 'NO';
   }
+
+  // Fallback: leer del payload del webhook si la API no lo devolvió
+  if (!marketingValue) {
+    const consent = payload.email_marketing_consent;
+    if (consent?.state === 'subscribed')        marketingValue = 'SI';
+    else if (consent?.state === 'unsubscribed') marketingValue = 'NO';
+  }
+
+  const hasFirstName = !!(payload.first_name || '').trim();
 
   const hasCarrito    = shopifyTags.has('carrito abandonado');
   const hasSoloCuenta = shopifyTags.has('solo cuenta');
