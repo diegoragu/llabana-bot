@@ -58,7 +58,7 @@ async function getTranscripts() {
     .reverse();
 }
 
-async function updateTranscript(telefono, transcript) {
+async function updateTranscript(telefono, nombre, transcript) {
   const sheets = getSheets();
   const telefono_clean = telefono.replace('whatsapp:', '').replace(/^\+?52/, '');
 
@@ -82,7 +82,7 @@ async function updateTranscript(telefono, transcript) {
       range: `${SHEET}!A${sheetRow}:D${sheetRow}`,
       valueInputOption: 'RAW',
       requestBody: {
-        values: [[fecha, rows[rowIndex][1] || '', rows[rowIndex][2] || '', transcript]]
+        values: [[fecha, nombre || rows[rowIndex][1] || '', rows[rowIndex][2] || '', transcript]]
       }
     });
   } else {
@@ -92,7 +92,7 @@ async function updateTranscript(telefono, transcript) {
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {
-        values: [[fecha, '', telefono, transcript]]
+        values: [[fecha, nombre || '', telefono, transcript]]
       }
     });
   }

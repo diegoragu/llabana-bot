@@ -1,6 +1,7 @@
 const botLogic    = require('./botLogic');
 const twilioService = require('./twilioService');
 const { updateTranscript } = require('./transcriptService');
+const sessionManager = require('./sessionManager');
 
 /**
  * Maneja el webhook POST de Twilio para mensajes de WhatsApp entrantes.
@@ -59,7 +60,9 @@ async function webhookHandler(req, res) {
     log.lines.push(`Bot: ${reply}`);
     console.log(`📤 [${from}]: ${reply.substring(0, 120)}${reply.length > 120 ? '…' : ''}`);
 
-    await updateTranscript(from, log.lines.join('\n'));
+    const session = sessionManager.getSession(from);
+    const nombre = session?.customer?.name || session?.tempData?.name || '';
+    await updateTranscript(from, nombre, log.lines.join('\n'));
   } catch (err) {
     console.error(`❌ Error procesando mensaje de ${from}:`, err);
     try {
