@@ -178,7 +178,7 @@ async function getShopifyToken() {
       return null;
     }
     shopifyToken       = data.access_token;
-    shopifyTokenExpiry = Date.now() + (data.expires_in - 300) * 1000;
+    shopifyTokenExpiry = Date.now() + ((data.expires_in ?? 86400) - 300) * 1000;
     console.log('Token Shopify obtenido, expira en:', data.expires_in, 'segundos');
     return shopifyToken;
   } catch (err) {
@@ -203,6 +203,7 @@ async function fetchShopifyCustomer(customerId) {
       { headers: { 'X-Shopify-Access-Token': token } }
     );
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) shopifyToken = null;
       console.warn(`⚠️  fetchShopifyCustomer: HTTP ${response.status} para customer ${customerId}`);
       return null;
     }
@@ -297,32 +298,6 @@ async function handleCustomerUpdate(payload) {
   }
 
   console.log(`   ✅ customers/update: ${email} | mkt=${marketingValue} carrito=${hasCarrito} soloCuenta=${hasSoloCuenta}`);
-}
-
-// ── Evento: checkouts/create (carrito abandonado) ─────────────────────────────
-
-async function handleCheckoutCreate(payload) {
-  const email = payload.email;
-  if (!email) {
-    console.log('   checkouts/create sin email, omitiendo');
-    return;
-  }
-
-  const customer = await sheetsService.findCustomerByEmail(email);
-  if (!customer) {
-    console.log(`   checkouts/create: ${email} no está en Sheets, omitiendo`);
-    return;
-  }
-
-  const seg = customer.segmento || '';
-  if (seg === 'Comprador' || seg === 'Recompra') {
-    console.log(`   checkouts/create: ${email} ya es "${seg}", no se sobreescribe`);
-    return;
-  }
-
-  await sheetsService.updateOrderData(customer.rowIndex, { segmento: 'Carrito abandonado' });
-  await sheetsService.appendTag(customer.rowIndex, 'Carrito abandonado');
-  console.log(`   🛒 checkouts/create: ${email} → Carrito abandonado`);
 }
 
 // ── Evento: orders/paid ───────────────────────────────────────────────────────

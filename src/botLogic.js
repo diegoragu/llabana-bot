@@ -470,7 +470,6 @@ async function notifyWig(phone, session, motivo = '') {
     `*Conversación:*\n${transcript}`;
 
   console.log(`📤 Intentando notificar a Wig | to: ${wigNumber} | motivo: ${motivo}`);
-  console.log(`🔍 notifyWig state debug | customer.state="${customer.state}" | tempData.state="${tempData.state}" | session.tempData?.state="${session.tempData?.state}"`);
   try {
     const result = await twilioService.sendMessage(wigNumber, msg);
     console.log(`📲 Wig notificado | sid: ${result.sid} | status: ${result.status} | errorCode: ${result.errorCode ?? 'none'} | errorMsg: ${result.errorMessage ?? 'none'}`);
