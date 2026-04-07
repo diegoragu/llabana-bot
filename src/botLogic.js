@@ -247,13 +247,19 @@ async function handleAskingMexico(phone, message, session) {
 
 // ── Paso 2: ¿Ya es cliente? ───────────────────────────────────────────────────
 
+const INTENT_KEYWORDS = /croquetas?|alimento|comida|producto|precio|cotizaci[oó]n|perro|gato|caballo|cerdo|borrego|ave|pez|pollo|vaca|toro|codorniz/i;
+
 async function handleAskingReturning(phone, message, session) {
   if (isReturningCustomer(message)) {
     sessionManager.updateSession(phone, { flowState: 'asking_returning_email' });
     return 'Dame tu correo para buscarte en nuestros registros 📧';
   }
-  // Primera vez o ambiguo → pedir nombre
-  sessionManager.updateSession(phone, { flowState: 'asking_name', tempData: { nameAttempts: 0 } });
+  // Primera vez o ambiguo → pedir nombre, guardar intent si hay palabras clave
+  const tempData = { nameAttempts: 0 };
+  if (INTENT_KEYWORDS.test(message)) {
+    tempData.intent = message;
+  }
+  sessionManager.updateSession(phone, { flowState: 'asking_name', tempData });
   return '¿Con quién tengo el gusto? 😊';
 }
 
@@ -331,6 +337,16 @@ async function handleAskingName(phone, message, session) {
       tempData: { ...session.tempData, negocio: input },
     });
     return '¡Qué bien! ¿Y con quién tengo el gusto?';
+  }
+
+  // Respuesta de flujo que llegó tarde (ej. "primera vez") — no es un nombre
+  const FLOW_RESPONSE_PATTERNS = /^(primera\s*vez|es\s*mi\s*primera|nunca\s*he|no\s*he|nuevo|nueva|no,?\s*primera)$/i;
+  if (FLOW_RESPONSE_PATTERNS.test(input)) {
+    sessionManager.updateSession(phone, {
+      flowState: 'asking_name',
+      tempData: { ...session.tempData, nameAttempts: 0 },
+    });
+    return '¿Con quién tengo el gusto? 😊';
   }
 
   // Claramente inválido como nombre (solo números, email, 1 carácter) → no contar intento

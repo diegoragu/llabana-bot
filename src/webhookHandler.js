@@ -97,25 +97,16 @@ async function webhookHandler(req, res) {
   }
 
   // Debounce: acumular mensajes y procesar tras 3s de silencio
-  // Si el bot ya respondió desde el último mensaje, no concatenar con mensajes anteriores
-  const existing = pendingMessages.get(from);
-  const pending = (existing && !existing.respondido)
-    ? existing
-    : { timer: null, messages: [], respondido: false };
-
+  const pending = pendingMessages.get(from) || { timer: null, messages: [] };
   pending.messages.push(body);
-  pending.respondido = false;
   if (pending.timer) clearTimeout(pending.timer);
 
   pending.timer = setTimeout(async () => {
-    const accumulated = pendingMessages.get(from);
-    if (!accumulated) return;
-    const mensajeCompleto = accumulated.messages.join(' ');
+    const entry = pendingMessages.get(from);
+    if (!entry) return;
+    const mensajeCompleto = entry.messages.join(' ');
     pendingMessages.delete(from);
     await procesarMensaje(from, mensajeCompleto);
-    // Marcar que el bot ya respondió para el próximo mensaje
-    const curr = pendingMessages.get(from);
-    if (curr) curr.respondido = true;
   }, 3000);
 
   pendingMessages.set(from, pending);
