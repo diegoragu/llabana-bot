@@ -58,6 +58,20 @@ async function getTranscripts() {
     .reverse();
 }
 
+async function getExistingTranscript(telefono) {
+  const sheets = getSheets();
+  const tel10 = telefono.replace('whatsapp:', '').replace(/\D/g, '').slice(-10);
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${SHEET}!A2:D`,
+  });
+
+  const rows = res.data.values || [];
+  const row = rows.find(r => (r[2] || '').replace(/\D/g, '').slice(-10) === tel10);
+  return row ? (row[3] || '') : '';
+}
+
 async function updateTranscript(telefono, nombre, transcript) {
   const sheets = getSheets();
   const telefono_clean = telefono.replace('whatsapp:', '').replace(/^\+?52/, '');
@@ -98,4 +112,4 @@ async function updateTranscript(telefono, nombre, transcript) {
   }
 }
 
-module.exports = { saveTranscript, getTranscripts, updateTranscript };
+module.exports = { saveTranscript, getTranscripts, updateTranscript, getExistingTranscript };

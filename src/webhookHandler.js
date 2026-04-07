@@ -1,6 +1,6 @@
 const botLogic    = require('./botLogic');
 const twilioService = require('./twilioService');
-const { updateTranscript } = require('./transcriptService');
+const { updateTranscript, getExistingTranscript } = require('./transcriptService');
 const sessionManager = require('./sessionManager');
 
 /**
@@ -49,7 +49,11 @@ async function webhookHandler(req, res) {
   console.log(`📨 [${from}]: ${body}`);
 
   try {
-    if (!chatLogs.has(from)) chatLogs.set(from, { lines: [], lastActivity: Date.now() });
+    if (!chatLogs.has(from)) {
+      const previo = await getExistingTranscript(from);
+      const lines = previo ? previo.split('\n').filter(Boolean) : [];
+      chatLogs.set(from, { lines, lastActivity: Date.now() });
+    }
     const log = chatLogs.get(from);
     log.lines.push(`Cliente: ${body}`);
     log.lastActivity = Date.now();
