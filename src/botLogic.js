@@ -297,15 +297,28 @@ async function handleAskingReturningEmail(phone, message, session) {
 
 // ── Paso 3: Nombre ────────────────────────────────────────────────────────────
 
-const NAME_INTENT_PATTERNS = /\b(croquetas?|alimento|comida|producto|precio|cotizaci[oó]n|perro|gato|caballo|cerdo|borrego|ave|pez|pollo|vaca|toro)\b/i;
+const NAME_INTENT_PATTERNS  = /\b(croquetas?|alimento|comida|producto|precio|cotizaci[oó]n|perro|gato|caballo|cerdo|borrego|ave|pez|pollo|vaca|toro)\b/i;
+const NAME_PRECIO_PATTERNS  = /\bprecio|cu[aá]nto|costo|cotizaci[oó]n|barato|caro\b/i;
 const NAME_NEGOCIO_PATTERNS = /\b(empresa|negocio|tienda|rancho|granja)\b/i;
 
 async function handleAskingName(phone, message, session) {
   const input    = message.trim();
   const attempts = session.tempData?.nameAttempts ?? 0;
 
+  // Pregunta de precio → informar, guardar intent y seguir pidiendo nombre
+  if (NAME_PRECIO_PATTERNS.test(input)) {
+    sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, intent: input },
+    });
+    return 'Los precios los encuentras en llabanaenlinea.com 🛒 ¿Y tu nombre cuál es?';
+  }
+
   // Parece una intención de compra → guardar y seguir pidiendo nombre
   if (NAME_INTENT_PATTERNS.test(input)) {
+    // Si ya hay un intent guardado, respuesta más corta
+    if (session.tempData?.intent) {
+      return 'Anoto eso 📝 ¿Y tu nombre?';
+    }
     sessionManager.updateSession(phone, {
       tempData: { ...session.tempData, intent: input },
     });
