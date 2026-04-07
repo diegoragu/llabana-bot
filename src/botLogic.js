@@ -297,10 +297,35 @@ async function handleAskingReturningEmail(phone, message, session) {
 
 // ── Paso 3: Nombre ────────────────────────────────────────────────────────────
 
+const NAME_INTENT_PATTERNS = /\b(croquetas?|alimento|comida|producto|precio|cotizaci[oó]n|perro|gato|caballo|cerdo|borrego|ave|pez|pollo|vaca|toro)\b/i;
+const NAME_NEGOCIO_PATTERNS = /\b(empresa|negocio|tienda|rancho|granja)\b/i;
+
 async function handleAskingName(phone, message, session) {
   const input    = message.trim();
   const attempts = session.tempData?.nameAttempts ?? 0;
-  const nombre   = sheetsService.limpiarNombre(input);
+
+  // Parece una intención de compra → guardar y seguir pidiendo nombre
+  if (NAME_INTENT_PATTERNS.test(input)) {
+    sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, intent: input },
+    });
+    return 'Anoto eso 📝 ¿Y tu nombre cuál es?';
+  }
+
+  // Parece descripción de empresa/rol → guardar y seguir pidiendo nombre
+  if (NAME_NEGOCIO_PATTERNS.test(input)) {
+    sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, negocio: input },
+    });
+    return '¡Qué bien! ¿Y con quién tengo el gusto?';
+  }
+
+  // Claramente inválido como nombre (solo números, email, 1 carácter) → no contar intento
+  if (/^\d+$/.test(input) || isValidEmail(input) || input.length === 1) {
+    return '¿Me dices tu nombre? Por ejemplo: Juan o María 😊';
+  }
+
+  const nombre = sheetsService.limpiarNombre(input);
 
   if (nombre) {
     const first = primerNombre(nombre);
@@ -379,9 +404,39 @@ function cpToState(cp) {
   return '';
 }
 
+const CP_INVALID_PATTERNS = /^[a-zA-Z\s]{2,}$/;
+
 async function handleAskingCp(phone, message, session) {
-  const cp = message.trim().replace(/\D/g, '');
+  const input = message.trim();
+  const cp    = input.replace(/\D/g, '');
+
   if (cp.length < 4 || cp.length > 5) {
+    // Parece un nombre (letras, sin números)
+    if (CP_INVALID_PATTERNS.test(input)) {
+      const posibleNombre = sheetsService.limpiarNombre(input);
+      if (posibleNombre && !session.tempData?.name) {
+        sessionManager.updateSession(phone, {
+          tempData: { ...session.tempData, name: posibleNombre },
+        });
+        return `Mucho gusto ${primerNombre(posibleNombre)} 😊 ¿Cuál es tu código postal?`;
+      }
+    }
+
+    // Parece una pregunta o consulta → Claude responde brevemente y vuelve a pedir CP
+    if (input.length > 6 || /[¿?]/.test(input)) {
+      let respuesta = '';
+      try {
+        respuesta = await claudeService.chat(session, [
+          { role: 'user', content: input },
+          { role: 'user', content: '(responde en máximo 1 oración, sin pedir nada más)' },
+        ]);
+      } catch {
+        respuesta = 'Claro';
+      }
+      const resp = (respuesta || 'Claro').replace(/\n/g, ' ').trim();
+      return `${resp} ¿Me das tu código postal para ver opciones de entrega? 📍`;
+    }
+
     return '¿Cuál es tu código postal? 📍 Son 5 dígitos, por ejemplo: 06600';
   }
 

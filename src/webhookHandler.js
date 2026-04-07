@@ -13,6 +13,9 @@ const sessionManager = require('./sessionManager');
  *
  * Respondemos con 200 inmediatamente para evitar timeouts de Twilio (15s),
  * y procesamos el mensaje de forma asíncrona.
+ *
+ * Debounce: acumula mensajes del mismo número durante 3s antes de procesar,
+ * para manejar mensajes enviados en ráfaga como un solo input concatenado.
  */
 
 // Deduplicación: guarda los últimos 100 MessageSid procesados
@@ -21,33 +24,10 @@ const MAX_SIDS = 100;
 
 const chatLogs = new Map();
 
-async function webhookHandler(req, res) {
-  // Responder a Twilio de inmediato
-  res.status(200).send('');
+// Debounce: { from → { timer, messages[] } }
+const pendingMessages = new Map();
 
-  // Deduplicar por MessageSid para evitar doble procesamiento
-  const sid = req.body?.MessageSid;
-  if (sid) {
-    if (processedSids.has(sid)) {
-      console.log(`⚠️  SID duplicado ignorado: ${sid}`);
-      return;
-    }
-    processedSids.add(sid);
-    if (processedSids.size > MAX_SIDS) {
-      processedSids.delete(processedSids.values().next().value);
-    }
-  }
-
-  const from = req.body?.From;
-  const body = (req.body?.Body || '').trim();
-
-  if (!from || !body) {
-    console.log('Webhook recibido sin From o Body:', JSON.stringify(req.body));
-    return;
-  }
-
-  console.log(`📨 [${from}]: ${body}`);
-
+async function procesarMensaje(from, body) {
   try {
     if (!chatLogs.has(from)) {
       const previo = await getExistingTranscript(from);
@@ -79,6 +59,57 @@ async function webhookHandler(req, res) {
       console.error('Error enviando mensaje de fallo:', sendErr.message);
     }
   }
+}
+
+async function webhookHandler(req, res) {
+  // Responder a Twilio de inmediato
+  res.status(200).send('');
+
+  // Deduplicar por MessageSid para evitar doble procesamiento
+  const sid = req.body?.MessageSid;
+  if (sid) {
+    if (processedSids.has(sid)) {
+      console.log(`⚠️  SID duplicado ignorado: ${sid}`);
+      return;
+    }
+    processedSids.add(sid);
+    if (processedSids.size > MAX_SIDS) {
+      processedSids.delete(processedSids.values().next().value);
+    }
+  }
+
+  const from = req.body?.From;
+  const body = (req.body?.Body || '').trim();
+
+  if (!from || !body) {
+    console.log('Webhook recibido sin From o Body:', JSON.stringify(req.body));
+    return;
+  }
+
+  console.log(`📨 [${from}]: ${body}`);
+
+  // Registrar mensaje individual en el log antes del debounce
+  if (!chatLogs.has(from)) {
+    getExistingTranscript(from).then(previo => {
+      const lines = previo ? previo.split('\n').filter(Boolean) : [];
+      if (!chatLogs.has(from)) chatLogs.set(from, { lines, lastActivity: Date.now() });
+    }).catch(() => {});
+  }
+
+  // Debounce: acumular mensajes y procesar tras 3s de silencio
+  const pending = pendingMessages.get(from) || { timer: null, messages: [] };
+  pending.messages.push(body);
+  if (pending.timer) clearTimeout(pending.timer);
+
+  pending.timer = setTimeout(() => {
+    const accumulated = pendingMessages.get(from);
+    if (!accumulated) return;
+    const mensajeCompleto = accumulated.messages.join(' ');
+    pendingMessages.delete(from);
+    procesarMensaje(from, mensajeCompleto);
+  }, 3000);
+
+  pendingMessages.set(from, pending);
 }
 
 module.exports = webhookHandler;
