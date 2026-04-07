@@ -1,4 +1,5 @@
 const Anthropic = require('@anthropic-ai/sdk');
+const shopifyService = require('./shopifyService');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -44,7 +45,7 @@ Si se da CUALQUIERA de estas situaciones, responde SOLO con la palabra: ESCALAR_
 (El mayoreo ya fue manejado antes de llegar aquí — no necesitas detectarlo)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
-async function chat(history, customer) {
+async function chat(history, customer, productos = []) {
   let customerContext = '';
   if (customer) {
     const channelLabel = customer.channel === 'paqueteria'
@@ -68,7 +69,13 @@ async function chat(history, customer) {
     customerContext = '\n' + lines.join('\n');
   }
 
-  const system        = customerContext ? `${SYSTEM_BASE}\n${customerContext}` : SYSTEM_BASE;
+  let productosContext = '';
+  if (productos.length > 0) {
+    const lista = productos.map(p => `- ${p.title} | $${p.price} | ${p.url}`).join('\n');
+    productosContext = `\n\n━━━ PRODUCTOS DISPONIBLES ━━━\n${lista}\nCuando el cliente pregunte por productos o precios, menciona estos productos específicos con sus precios reales y el link directo. No inventes productos.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+  }
+
+  const system        = `${SYSTEM_BASE}${productosContext}${customerContext ? '\n' + customerContext : ''}`;
   const recentHistory = history.slice(-10);
 
   const response = await client.messages.create({

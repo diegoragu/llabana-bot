@@ -20,10 +20,11 @@
  * Teléfono guardado como +52XXXXXXXXXX (sin prefijo whatsapp:).
  */
 
-const sessionManager = require('./sessionManager');
-const sheetsService  = require('./sheetsService');
-const claudeService  = require('./claudeService');
-const twilioService  = require('./twilioService');
+const sessionManager  = require('./sessionManager');
+const sheetsService   = require('./sheetsService');
+const claudeService   = require('./claudeService');
+const twilioService   = require('./twilioService');
+const shopifyService  = require('./shopifyService');
 
 // ── Constantes y helpers de detección ────────────────────────────────────────
 
@@ -387,6 +388,8 @@ async function handleAskingIntent(phone, message, session) {
 
   // Guardar consulta en tempData para incluirla en Notas al registrar
   session.tempData.intent = intent;
+  const especieHandle = shopifyService.detectarEspecie(intent);
+  if (especieHandle) session.tempData.especieHandle = especieHandle;
   sessionManager.updateSession(phone, { tempData: session.tempData });
 
   // Escalación: mayoreo, reventa, grandes cantidades o solicitud de humano
@@ -524,10 +527,19 @@ async function handleAskingCp(phone, message, session) {
   }
 
   const firstName = primerNombre(customerData.name);
+
+  // Precargar productos si se detectó especie en el flujo de onboarding
+  let productosPreCargados = [];
+  const especieHandle = session.tempData?.especieHandle;
+  if (especieHandle) {
+    productosPreCargados = await shopifyService.getProductosPorEspecie(especieHandle, 3);
+  }
+
   sessionManager.updateSession(phone, {
     flowState: 'active',
     customer:  updatedSession.customer,
     tempData:  {},
+    productos: productosPreCargados,
   });
 
   return `${pick(CHANNEL_VARIANTS)(firstName)} ${pick(CLOSING_VARIANTS)}`;
@@ -545,9 +557,20 @@ async function handleActive(phone, message, session) {
 
   session.conversationHistory.push({ role: 'user', content: message });
 
+  // Cargar productos por especie detectada en el mensaje
+  let productos = session.productos || [];
+  if (productos.length === 0) {
+    const handle = shopifyService.detectarEspecie(message);
+    if (handle) {
+      productos = await shopifyService.getProductosPorEspecie(handle, 3);
+      session.productos = productos;
+      sessionManager.updateSession(phone, { productos });
+    }
+  }
+
   let response;
   try {
-    response = await claudeService.chat(session.conversationHistory, session.customer);
+    response = await claudeService.chat(session.conversationHistory, session.customer, productos);
   } catch (err) {
     console.error('claudeService.chat error:', err.message);
     return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
