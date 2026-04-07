@@ -144,16 +144,81 @@ async function handleCustomerCreate(payload) {
   console.log(`   ✅ customers/create: ${email} registrado como "Lead frío" | rowIndex: ${rowIndex}`);
 }
 
+// ── Shopify Admin API ─────────────────────────────────────────────────────────
+
+let shopifyToken       = null;
+let shopifyTokenExpiry = null;
+
+async function getShopifyToken() {
+  if (shopifyToken && shopifyTokenExpiry && Date.now() < shopifyTokenExpiry) {
+    return shopifyToken;
+  }
+
+  const storeUrl     = process.env.SHOPIFY_STORE_URL;
+  const clientId     = process.env.SHOPIFY_CLIENT_ID;
+  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+
+  if (!storeUrl || !clientId || !clientSecret) {
+    console.warn('⚠️  SHOPIFY_STORE_URL, SHOPIFY_CLIENT_ID o SHOPIFY_CLIENT_SECRET no configurados');
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `https://${storeUrl}/admin/oauth/access_token`,
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    `grant_type=client_credentials&client_id=${clientId}&client_secret=${clientSecret}`,
+      }
+    );
+    const data = await response.json();
+    if (!data.access_token) {
+      console.error('Error obteniendo token Shopify:', JSON.stringify(data));
+      return null;
+    }
+    shopifyToken       = data.access_token;
+    shopifyTokenExpiry = Date.now() + (data.expires_in - 300) * 1000;
+    console.log('Token Shopify obtenido, expira en:', data.expires_in, 'segundos');
+    return shopifyToken;
+  } catch (err) {
+    console.error('Error en getShopifyToken:', err.message);
+    return null;
+  }
+}
+
+async function fetchShopifyCustomer(customerId) {
+  const storeUrl = process.env.SHOPIFY_STORE_URL;
+  if (!storeUrl) {
+    console.warn('⚠️  SHOPIFY_STORE_URL no configurado — no se pueden obtener tags');
+    return null;
+  }
+
+  const token = await getShopifyToken();
+  if (!token) return null;
+
+  try {
+    const response = await fetch(
+      `https://${storeUrl}/admin/api/2024-01/customers/${customerId}.json`,
+      { headers: { 'X-Shopify-Access-Token': token } }
+    );
+    if (!response.ok) {
+      console.warn(`⚠️  fetchShopifyCustomer: HTTP ${response.status} para customer ${customerId}`);
+      return null;
+    }
+    const data = await response.json();
+    return data.customer;
+  } catch (err) {
+    console.error('Error en fetchShopifyCustomer:', err.message);
+    return null;
+  }
+}
+
 // ── Evento: customers/update ──────────────────────────────────────────────────
 
 // Tags de Shopify que no son propios del negocio y deben ignorarse
 const SHOPIFY_SYSTEM_TAGS = /^(judge\.me|login with shop|shop|shopify)/i;
 
-/**
- * Parsea el campo "tags" del payload de customers/update.
- * Devuelve un Set de tags en minúsculas, filtrando los de sistema de Shopify.
- * Case-insensitive: compara siempre en lowercase.
- */
 function parseShopifyTags(rawTags) {
   if (!rawTags) return new Set();
   return new Set(
@@ -164,18 +229,27 @@ function parseShopifyTags(rawTags) {
 }
 
 async function handleCustomerUpdate(payload) {
-  console.log('=== SHOPIFY RAW PAYLOAD customers/update ===', JSON.stringify(payload, null, 2));
-  console.log('tags type:', typeof payload.tags, '| value:', payload.tags);
-  console.log('accepts_marketing type:', typeof payload.accepts_marketing, '| value:', payload.accepts_marketing);
-  console.log('email_marketing_consent:', JSON.stringify(payload.email_marketing_consent));
-  const email = payload.email;
+  const email      = payload.email;
+  const customerId = payload.id;
   if (!email) return;
 
-  const marketingValue     = payload.accepts_marketing !== undefined ? (payload.accepts_marketing ? 'SI' : 'NO') : null;
-  const hasFirstName       = !!(payload.first_name || '').trim();
-  const shopifyTags        = parseShopifyTags(payload.tags);
-  const hasCarrito         = shopifyTags.has('carrito abandonado');
-  const hasSoloCuenta      = shopifyTags.has('solo cuenta');
+  // accepts_marketing viene en email_marketing_consent, no en accepts_marketing
+  const consent        = payload.email_marketing_consent;
+  const marketingValue = consent?.state === 'subscribed'   ? 'SI'
+                       : consent?.state === 'unsubscribed' ? 'NO'
+                       : null;
+
+  const hasFirstName = !!(payload.first_name || '').trim();
+
+  // Tags reales via Admin API (payload.tags siempre viene vacío en customers/update)
+  let shopifyTags = new Set();
+  if (customerId) {
+    const customer = await fetchShopifyCustomer(customerId);
+    if (customer?.tags) shopifyTags = parseShopifyTags(customer.tags);
+  }
+
+  const hasCarrito    = shopifyTags.has('carrito abandonado');
+  const hasSoloCuenta = shopifyTags.has('solo cuenta');
 
   if (!marketingValue && !hasFirstName && !hasCarrito && !hasSoloCuenta) return;
 
@@ -201,11 +275,11 @@ async function handleCustomerUpdate(payload) {
     }
   }
 
-  // Tag "Carrito abandonado" desde Shopify Flow → actualizar segmento (nunca sobreescribir Comprador/Recompra)
+  // Tag "Carrito abandonado" → actualizar segmento (nunca sobreescribir Comprador/Recompra)
   if (hasCarrito && seg !== 'Comprador' && seg !== 'Recompra') {
     await sheetsService.updateOrderData(existing.rowIndex, { segmento: 'Carrito abandonado' });
     await sheetsService.appendTag(existing.rowIndex, 'Carrito abandonado');
-    console.log(`   🛒 customers/update: ${email} → Carrito abandonado (via tag Shopify Flow)`);
+    console.log(`   🛒 customers/update: ${email} → Carrito abandonado (via Admin API)`);
   }
 
   // Tag "Solo cuenta" → agregar al historial solo si el segmento es Lead frío o está vacío
