@@ -100,8 +100,12 @@ async function handleCustomerCreate(payload) {
   const existing = await sheetsService.findCustomerByEmail(email);
 
   if (existing) {
-    // Cliente ya existe → solo agregar tag y actualizar marketing si aplica
-    await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
+    // Cliente ya existe → solo agregar tag si segmento es Lead frío o vacío
+    const segExistente = existing.segmento || '';
+    const puedeTagSoloCuenta = segExistente === 'Lead frío' || segExistente === '';
+    if (puedeTagSoloCuenta) {
+      await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
+    }
     if (acceptsMarketing) {
       await sheetsService.updateEmailMarketing(existing.rowIndex, 'SI');
     }
