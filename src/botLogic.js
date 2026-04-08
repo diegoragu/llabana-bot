@@ -258,6 +258,13 @@ async function handleConfirmingReset(phone, message, session) {
 // ── Paso 1: Filtro México ─────────────────────────────────────────────────────
 
 async function handleAskingMexico(phone, message, session) {
+  // Si el mensaje viene de un link de tracking, guardarlo
+  const origen = detectarOrigen(message);
+  if (origen !== 'Directo' && !session.tempData?.entryPoint) {
+    session.tempData = { ...session.tempData, entryPoint: origen };
+    sessionManager.updateSession(phone, { tempData: session.tempData });
+  }
+
   if (isOutsideMexico(message)) {
     sessionManager.deleteSession(phone);
     return OUT_OF_COVERAGE_MSG;
