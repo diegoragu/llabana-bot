@@ -43,13 +43,13 @@ app.get('/api/transcripts', async (req, res) => {
 });
 
 const WA_LINKS = {
-  'google':          '¡Hola! Los encontré en Google 👋',
-  'facebook':        '¡Hola! Los vi en Facebook 👋',
-  'web-header':      '¡Hola! Estoy en su página web 👋',
-  'web-footer':      '¡Hola! Los contacto desde su página 👋',
-  'web-chat':        '¡Hola! Me pasaron al WhatsApp desde el chat 👋',
-  'web-producto':    '¡Hola! Vi un producto en su página 👋',
-  'tienda-producto': '¡Hola! Vi un producto en la tienda en línea 👋',
+  'google':          '¡Hola! Los encontré en Google',
+  'facebook':        '¡Hola! Los vi en Facebook',
+  'web-header':      '¡Hola! Estoy en su página web',
+  'web-footer':      '¡Hola! Los contacto desde su página',
+  'web-chat':        '¡Hola! Me pasaron al WhatsApp desde el chat',
+  'web-producto':    '¡Hola! Vi un producto en su página',
+  'tienda-producto': '¡Hola! Vi un producto en la tienda en línea',
 };
 
 app.get('/wa/:origen', (req, res) => {
