@@ -41,6 +41,10 @@ Si se da CUALQUIERA de estas situaciones, responde SOLO con la palabra: ESCALAR_
 - El cliente tiene una queja o reclamación
 - Está enojado o muy frustrado
 - Menciona un error en su pedido o entrega
+- El cliente pregunta por costos o detalles de envío, flete o paquetería
+- El cliente hace preguntas muy específicas de logística que no puedes responder
+- El cliente pide algo que no puedes resolver con la tienda en línea
+- La conversación se está complicando y sientes que un asesor humano daría mejor atención
 
 (El mayoreo ya fue manejado antes de llegar aquí — no necesitas detectarlo)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
