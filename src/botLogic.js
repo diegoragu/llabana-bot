@@ -221,8 +221,7 @@ async function handleMessage(phone, messageBody) {
     case 'out_of_coverage':
       sessionManager.deleteSession(phone);
       return OUT_OF_COVERAGE_MSG;
-    case 'waiting_for_wig':
-      return 'Ya avisamos a un asesor, en breve te contacta 🙌 ¿Hay algo más en lo que te pueda ayudar mientras tanto?';
+    case 'waiting_for_wig':        return handleWaitingForWig(phone, messageBody, session);
     case 'escalated':
       return 'Tu mensaje ya fue enviado a un asesor. Pronto te contactan 🤝';
     default:
@@ -584,6 +583,39 @@ async function handleAskingCp(phone, message, session) {
   });
 
   return `${pick(CHANNEL_VARIANTS)(firstName)} ${pick(CLOSING_VARIANTS)}`;
+}
+
+// ── Esperando asesor ──────────────────────────────────────────────────────────
+
+const DESPEDIDA_PATTERNS = /^(gracias|muchas gracias|seria todo|sería todo|ok gracias|vale gracias|listo gracias|perfecto gracias|hasta luego|bye|adios|adiós|no gracias|es todo|eso es todo|por ahora es todo|nada mas|nada más)$/i;
+
+async function handleWaitingForWig(phone, message, session) {
+  // Detectar despedida → cerrar conversación amablemente
+  if (DESPEDIDA_PATTERNS.test(message.trim())) {
+    sessionManager.deleteSession(phone);
+    return '¡Con gusto! En breve te contacta un asesor 🙌 Que tengas buen día 🌾';
+  }
+
+  // Detectar pregunta o consulta nueva → responder con Claude brevemente
+  const esConsulta = message.trim().length > 8 || message.includes('?');
+  if (esConsulta) {
+    session.conversationHistory.push({ role: 'user', content: message });
+    let response;
+    try {
+      response = await claudeService.chat(session.conversationHistory, session.customer);
+    } catch {
+      response = 'En breve te contacta un asesor para ayudarte 🙌';
+    }
+    if (response.includes('ESCALAR_A_WIG')) {
+      return 'En breve te contacta un asesor 🙌';
+    }
+    session.conversationHistory.push({ role: 'assistant', content: response });
+    sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+    return response;
+  }
+
+  // Respuesta corta o ambigua → mensaje estándar
+  return 'En breve te contacta un asesor 🙌';
 }
 
 // ── Conversación libre con Claude ─────────────────────────────────────────────
