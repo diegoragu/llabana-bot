@@ -341,7 +341,7 @@ async function handleAskingName(phone, message, session) {
   }
 
   // Respuesta de flujo que llegó tarde (ej. "primera vez") — no es un nombre
-  const FLOW_RESPONSE_PATTERNS = /^(primera\s*vez|es\s*mi\s*primera|nunca\s*he|no\s*he|nuevo|nueva|no,?\s*primera)$/i;
+  const FLOW_RESPONSE_PATTERNS = /^(primera\s*ve[zs]|es\s*mi\s*primera|nunca\s*he|no\s*he|nuevo|nueva|no,?\s*primera|first\s*time|1era\s*vez|primera\s*ocasion)$/i;
   if (FLOW_RESPONSE_PATTERNS.test(input)) {
     sessionManager.updateSession(phone, {
       flowState: 'asking_name',
