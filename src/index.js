@@ -42,6 +42,27 @@ app.get('/api/transcripts', async (req, res) => {
   }
 });
 
+const WA_LINKS = {
+  'google':          '¡Hola! Los encontré en Google 👋',
+  'facebook':        '¡Hola! Los vi en Facebook 👋',
+  'web-header':      '¡Hola! Estoy en su página web 👋',
+  'web-footer':      '¡Hola! Los contacto desde su página 👋',
+  'web-chat':        '¡Hola! Me pasaron al WhatsApp desde el chat 👋',
+  'web-producto':    '¡Hola! Vi un producto en su página 👋',
+  'tienda-producto': '¡Hola! Vi un producto en la tienda en línea 👋',
+};
+
+app.get('/wa/:origen', (req, res) => {
+  const origen = req.params.origen.toLowerCase();
+  const texto  = WA_LINKS[origen];
+  if (!texto) {
+    return res.status(404).json({ error: 'Link no encontrado' });
+  }
+  const encoded = encodeURIComponent(texto);
+  const url = `https://wa.me/17623490579?text=${encoded}`;
+  res.redirect(302, url);
+});
+
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada' });
 });

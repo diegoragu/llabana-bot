@@ -107,6 +107,27 @@ const PRICE_PATTERNS = [
 // Palabras que reinician la sesión desde cualquier estado
 const RESET_PATTERNS = /^(inicio|men[uú]|empezar|reset|start|comenzar|nueva\s*consulta|reiniciar)$/i;
 
+// Mapa de textos pre-cargados de WhatsApp a punto de entrada
+const ENTRY_POINT_MAP = {
+  'los encontré en google':               'Google Business',
+  'los vi en facebook':                   'Facebook',
+  'estoy en su página web':               'Web - Header',
+  'los contacto desde su página':         'Web - Footer',
+  'me pasaron al whatsapp desde el chat': 'Web - Chatbot',
+  'vi un producto en su página':          'Web - Producto',
+  'vi un producto en la tienda en línea': 'Tienda - Producto',
+};
+
+function detectarOrigen(message) {
+  const lower = (message || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  for (const [key, value] of Object.entries(ENTRY_POINT_MAP)) {
+    const keyNorm = key.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (lower.includes(keyNorm)) return value;
+  }
+  return 'Directo';
+}
+
 function isOutsideMexico(text) {
   return /^no$/i.test(text.trim()) || OUTSIDE_MEXICO_PATTERNS.some(re => re.test(text));
 }
@@ -154,7 +175,10 @@ async function handleMessage(phone, messageBody) {
 
   // ── Sesión nueva: buscar cliente por teléfono ─────────────────────────────
   if (!session) {
+    const entryPoint = detectarOrigen(messageBody);
     session = sessionManager.createSession(phone);
+    session.tempData.entryPoint = entryPoint;
+    sessionManager.updateSession(phone, { tempData: session.tempData });
 
     const customer = await sheetsService.findCustomer(phone);
 
@@ -164,6 +188,11 @@ async function handleMessage(phone, messageBody) {
       sheetsService.appendConversationLog(
         phone, '[inicio sesión]', `Bienvenida enviada a ${customer.name}`
       ).catch(() => {});
+
+      // Actualizar punto de entrada si vino de un link de tracking
+      if (entryPoint !== 'Directo') {
+        sheetsService.updateOrderData(customer.rowIndex, { entryPoint }).catch(() => {});
+      }
 
       return customer.name
         ? `¡Hola ${primerNombre(customer.name)}! 👋 Qué gusto verte de nuevo. ¿En qué te puedo ayudar hoy?`
@@ -489,7 +518,7 @@ async function handleAskingCp(phone, message, session) {
     channelDetail: CHANNEL_PAQUETERIA.detail,
     segmento:      'Lead frío',
     aceWa:         'SI',
-    entryPoint:    'Directo',
+    entryPoint:    session.tempData?.entryPoint || 'Directo',
   };
 
   let rowIndex = null;

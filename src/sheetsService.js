@@ -321,7 +321,7 @@ async function appendConversationLog(phone, userMsg, botMsg) {
  * @param {number} rowIndex  - Fila 1-based del cliente en la hoja
  * @param {object} fields    - { totalOrders?, totalSpent?, segmento? }
  */
-async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fechaCompra, name, phone, state, city, cp, notas } = {}) {
+async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fechaCompra, name, phone, state, city, cp, notas, entryPoint } = {}) {
   try {
     const sheets = await getSheets();
     const data   = [];
@@ -336,6 +336,7 @@ async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fe
     if (city        !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.CIUDAD)}${rowIndex}`,       values: [[city]]         });
     if (cp          !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.CP)}${rowIndex}`,           values: [[cp]]           });
     if (notas       !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.NOTAS)}${rowIndex}`,        values: [[notas]]        });
+    if (entryPoint  !== undefined) data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.ENTRADA)}${rowIndex}`,      values: [[entryPoint]]   });
     data.push({ range: `${SHEET_BASE}!${columnLetter(BASE.ULTIMO_MOV)}${rowIndex}`, values: [[nowMXDatetime()]] });
 
     await sheets.spreadsheets.values.batchUpdate({
