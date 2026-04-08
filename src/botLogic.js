@@ -115,7 +115,8 @@ const ENTRY_POINT_MAP = {
   'los contacto desde su página':         'Web - Footer',
   'me pasaron al whatsapp desde el chat': 'Web - Chatbot',
   'vi un producto en su página':          'Web - Producto',
-  'vi un producto en la tienda en línea': 'Tienda - Producto',
+  'vi un producto en la tienda en línea':                  'Tienda - Producto',
+  'me pasaron al whatsapp desde el chat de la tienda':     'Tienda - Chatbot',
 };
 
 function detectarOrigen(message) {

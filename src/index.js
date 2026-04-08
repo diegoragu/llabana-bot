@@ -50,6 +50,7 @@ const WA_LINKS = {
   'web-chat':        '¡Hola! Me pasaron al WhatsApp desde el chat',
   'web-producto':    '¡Hola! Vi un producto en su página',
   'tienda-producto': '¡Hola! Vi un producto en la tienda en línea',
+  'tienda-chat':     '¡Hola! Me pasaron al WhatsApp desde el chat de la tienda',
 };
 
 app.get('/wa/:origen', (req, res) => {
