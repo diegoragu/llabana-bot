@@ -158,9 +158,9 @@ function limpiarNombre(nombre) {
   // Parece un email
   if (n.includes('@') || /\.com\b/i.test(n)) return '';
 
-  // Quitar prefijo "Con " (Shopify lo genera en checkouts de invitado)
-  // Ejemplo: "Con Diego Ramirez" → "Diego Ramirez"
-  n = n.replace(/^con\s+/i, '').trim();
+  // Quitar prefijos comunes que no forman parte del nombre
+  // Ejemplo: "Soy Héctor" → "Héctor", "Me llamo María" → "María"
+  n = n.replace(/^(con|soy|me\s+llamo|mi\s+nombre\s+es|es)\s+/i, '').trim();
   if (!n) return '';
 
   // Contiene palabras que no son nombres
