@@ -123,8 +123,12 @@ function detectarOrigen(message) {
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   for (const [key, value] of Object.entries(ENTRY_POINT_MAP)) {
     const keyNorm = key.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (lower.includes(keyNorm)) return value;
+    if (lower.includes(keyNorm)) {
+      console.log(`🔗 detectarOrigen: "${lower.substring(0, 50)}" → ${value}`);
+      return value;
+    }
   }
+  console.log(`🔗 detectarOrigen: "${lower.substring(0, 50)}" → Directo`);
   return 'Directo';
 }
 
@@ -263,6 +267,7 @@ async function handleAskingMexico(phone, message, session) {
   if (origen !== 'Directo' && !session.tempData?.entryPoint) {
     session.tempData = { ...session.tempData, entryPoint: origen };
     sessionManager.updateSession(phone, { tempData: session.tempData });
+    console.log(`🔗 Origen detectado en asking_mexico: ${origen}`);
   }
 
   if (isOutsideMexico(message)) {
