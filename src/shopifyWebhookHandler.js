@@ -296,7 +296,7 @@ async function handleCustomerUpdate(payload) {
   }
 
   // Tag "Solo cuenta" → agregar al historial solo si el segmento es Lead frío o está vacío
-  if (hasSoloCuenta && (seg === 'Lead frío' || !seg)) {
+  if (hasSoloCuenta && !hasCarrito && (seg === 'Lead frío' || !seg)) {
     await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
     console.log(`   customers/update: ${email} → tag "Solo cuenta" registrado`);
   }
