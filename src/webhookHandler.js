@@ -81,8 +81,23 @@ async function webhookHandler(req, res) {
   const from = req.body?.From;
   const body = (req.body?.Body || '').trim();
 
-  if (!from || !body) {
-    console.log('Webhook recibido sin From o Body:', JSON.stringify(req.body));
+  if (!from) {
+    console.log('Webhook recibido sin From:', JSON.stringify(req.body));
+    return;
+  }
+
+  if (!body) {
+    // Mensaje sin texto: imagen, audio, video, sticker, etc.
+    const mediaType = req.body?.MediaContentType0 || 'archivo';
+    console.log(`📎 Mensaje multimedia de ${from}: ${mediaType}`);
+    try {
+      await twilioService.sendMessage(
+        from,
+        'Vi que me mandaste un archivo, pero por ahora solo puedo leer texto 😊 ¿En qué te puedo ayudar?'
+      );
+    } catch (err) {
+      console.error('Error respondiendo a multimedia:', err.message);
+    }
     return;
   }
 
