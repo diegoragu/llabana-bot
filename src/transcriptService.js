@@ -24,6 +24,7 @@ function getSheets() {
 async function saveTranscript(nombre, telefono, transcript) {
   const sheets = getSheets();
   const fecha = new Date().toLocaleString('es-MX', {
+    timeZone: 'America/Mexico_City',
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false
   });
@@ -85,6 +86,7 @@ async function updateTranscript(telefono, nombre, transcript) {
   const rowIndex = rows.findIndex(r => (r[2] || '').replace(/^\+?52/, '').replace(/\D/g, '').slice(-10) === telefono_clean.replace(/\D/g, '').slice(-10));
 
   const fecha = new Date().toLocaleString('es-MX', {
+    timeZone: 'America/Mexico_City',
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false
   });
