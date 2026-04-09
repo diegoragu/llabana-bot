@@ -273,6 +273,7 @@ async function handleCustomerUpdate(payload) {
   }
 
   const seg = existing.segmento || '';
+  console.log(`   🔍 customerUpdate debug: seg="${seg}" hasCarrito=${hasCarrito} hasSoloCuenta=${hasSoloCuenta} tags="${existing.tags}"`);
 
   if (marketingValue) {
     await sheetsService.updateEmailMarketing(existing.rowIndex, marketingValue);
