@@ -192,20 +192,28 @@ async function handleMessage(phone, messageBody) {
     const customer = await sheetsService.findCustomer(phone);
 
     if (customer) {
-      // Cliente existente → directo a active
+      // Cliente existente
       const customerData = {
         ...customer,
         channel:       'paqueteria',
         channelDetail: 'Nacional',
       };
+      if (entryPoint !== 'Directo') {
+        sheetsService.updateOrderData(customer.rowIndex, { entryPoint }).catch(() => {});
+      }
+      const nombre = primerNombre(customer.name);
+      if (!nombre) {
+        sessionManager.updateSession(phone, {
+          flowState: 'asking_name',
+          customer:  customerData,
+        });
+        return '¡Hola! 👋 ¿Con quién tengo el gusto?';
+      }
+      // Cliente existente con nombre → procesar primer mensaje con Claude
       sessionManager.updateSession(phone, {
         flowState: 'active',
         customer:  customerData,
       });
-      if (entryPoint !== 'Directo') {
-        sheetsService.updateOrderData(customer.rowIndex, { entryPoint }).catch(() => {});
-      }
-      // Procesar su primer mensaje directamente con Claude
       return handleActive(phone, messageBody, sessionManager.getSession(phone));
     }
 
@@ -217,6 +225,7 @@ async function handleMessage(phone, messageBody) {
   // Rutear
   switch (session.flowState) {
     case 'asking_mexico':    return handleAskingMexico(phone, messageBody, session);
+    case 'asking_name':      return handleAskingName(phone, messageBody, session);
     case 'active':           return handleActive(phone, messageBody, session);
     case 'waiting_for_wig':  return handleWaitingForWig(phone, messageBody, session);
     case 'escalated':        return handleEscalated(phone, messageBody, session);
@@ -247,13 +256,42 @@ async function handleAskingMexico(phone, message, session) {
     return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor.';
   }
 
-  // México confirmado → active
+  // México confirmado → pedir nombre
+  sessionManager.updateSession(phone, { flowState: 'asking_name' });
+  return '¿Con quién tengo el gusto? 😊';
+}
+
+// ── Nombre ────────────────────────────────────────────────────────────────────
+
+async function handleAskingName(phone, message, session) {
+  const nombre = sheetsService.limpiarNombre(message);
+  const attempts = session.tempData?.nameAttempts ?? 0;
+
+  if (nombre) {
+    const first = primerNombre(nombre);
+    sessionManager.updateSession(phone, {
+      flowState: 'active',
+      tempData:  { ...session.tempData, name: nombre, nameAttempts: 0 },
+      customer:  { ...session.customer, name: nombre },
+    });
+    return pick([
+      `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`,
+      `¡Qué bueno que nos escribes, ${first}! ¿En qué te ayudo?`,
+      `Gracias ${first} 🌾 ¿Qué necesitas hoy?`,
+    ]);
+  }
+
+  // Nombre inválido
+  if (attempts < 2) {
+    sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, nameAttempts: attempts + 1 },
+    });
+    return '¿Me dices tu nombre? Por ejemplo: Juan o María 😊';
+  }
+
+  // Agotó intentos → continuar sin nombre
   sessionManager.updateSession(phone, { flowState: 'active' });
-  return pick([
-    '¿En qué te puedo ayudar? 😊',
-    '¿Qué necesitas hoy? 🌾',
-    '¿En qué te ayudo? 😊',
-  ]);
+  return '¿En qué te puedo ayudar? 😊';
 }
 
 // ── Conversación libre con Claude ─────────────────────────────────────────────
@@ -326,28 +364,6 @@ async function handleActive(phone, message, session) {
       return firstName
         ? `¡Listo, ${firstName}! 😊 En breve te contacta un asesor por este WhatsApp para ayudarte.`
         : '¡Listo! 😊 En breve te contacta un asesor por este WhatsApp para ayudarte.';
-    }
-  }
-
-  // Detectar nombre si aún no lo tenemos
-  if (!session.customer?.name && !session.tempData?.name) {
-    const nombreDetectado = sheetsService.limpiarNombre(message);
-    const NO_NOMBRE_PATTERNS = /^(para|con|de|en|por|sin|sobre|quiero|busco|tengo|necesito|hola|buenos|buenas|gracias|ok|si|no|bien|mal|claro|perfecto|listo|dale|sale)\b/i;
-
-    const esNombre = nombreDetectado &&
-                     !FLOW_PATTERNS.test(message) &&
-                     !NO_NOMBRE_PATTERNS.test(message.trim()) &&
-                     message.trim().split(/\s+/).length <= 4 &&
-                     !message.includes('?') &&
-                     !/\d{5}/.test(message) &&
-                     !/\b(perro|gato|cerdo|caballo|borrego|ave|pez|pollo|vaca|toro|codorniz|gallina|conejo|porcino|bovino)\b/i.test(message);
-    if (esNombre) {
-      session.tempData = { ...session.tempData, name: nombreDetectado };
-      sessionManager.updateSession(phone, { tempData: session.tempData });
-      if (session.customer?.rowIndex) {
-        sheetsService.updateOrderData(session.customer.rowIndex,
-          { name: nombreDetectado }).catch(() => {});
-      }
     }
   }
 
