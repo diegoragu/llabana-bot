@@ -311,11 +311,24 @@ async function handleAskingMexico(phone, message, session) {
 
 const INTENT_KEYWORDS = /croquetas?|alimento|comida|producto|precio|cotizaci[oó]n|perro|gato|caballo|cerdo|borrego|ave|pez|pollo|vaca|toro|codorniz/i;
 
+const ESTADOS_MX = /jalisco|cdmx|ciudad\s*de\s*m[eé]xico|estado\s*de\s*m[eé]xico|edomex|nuevo\s*le[oó]n|veracruz|puebla|guanajuato|chihuahua|sonora|tamaulipas|oaxaca|chiapas|guerrero|michoac[aá]n|sinaloa|hidalgo|tabasco|yucatan|yucat[aá]n|quintana\s*roo|san\s*luis\s*potos[ií]|coahuila|durango|zacatecas|colima|nayarit|tlaxcala|campeche|baja\s*california|morelos|quer[eé]taro|aguascalientes/i;
+
 async function handleAskingReturning(phone, message, session) {
   if (isReturningCustomer(message)) {
     sessionManager.updateSession(phone, { flowState: 'asking_returning_email' });
     return 'Dame tu correo para buscarte en nuestros registros 📧';
   }
+
+  // Detectar estado mexicano en la respuesta → continuar como cliente nuevo
+  if (ESTADOS_MX.test(message)) {
+    const tempData = { nameAttempts: 0 };
+    if (INTENT_KEYWORDS.test(message)) tempData.intent = message;
+    const estadoMatch = message.match(ESTADOS_MX);
+    if (estadoMatch) tempData.estadoDetectado = estadoMatch[0];
+    sessionManager.updateSession(phone, { flowState: 'asking_name', tempData });
+    return '¿Con quién tengo el gusto? 😊';
+  }
+
   // Primera vez o ambiguo → pedir nombre, guardar intent si hay palabras clave
   const tempData = { nameAttempts: 0 };
   if (INTENT_KEYWORDS.test(message)) {
@@ -402,7 +415,7 @@ async function handleAskingName(phone, message, session) {
   }
 
   // Respuesta de flujo que llegó tarde (ej. "primera vez") — no es un nombre
-  const FLOW_RESPONSE_PATTERNS = /^(primera\s*ve[zs]|es\s*mi\s*primera|nunca\s*he|no\s*he|nuevo|nueva|no,?\s*primera|first\s*time|1era\s*vez|primera\s*ocasion)$/i;
+  const FLOW_RESPONSE_PATTERNS = /(primera\s*ve[zs]|es\s*mi\s*primera|nunca\s*he|no\s*he|soy\s*nuev[oa]|no,?\s*primera|first\s*time|1era\s*vez|primera\s*ocasion)/i;
   if (FLOW_RESPONSE_PATTERNS.test(input)) {
     sessionManager.updateSession(phone, {
       flowState: 'asking_name',
