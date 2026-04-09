@@ -97,13 +97,16 @@ async function handleCustomerCreate(payload) {
   }
 
   const acceptsMarketing = !!payload.accepts_marketing;
+  const tieneCtaActiva   = payload.state === 'enabled';
   const existing = await sheetsService.findCustomerByEmail(email);
 
+  console.log(`   customers/create: ${email} | state=${payload.state}`);
+
   if (existing) {
-    // Cliente ya existe → solo agregar tag si segmento es Lead frío o vacío
+    // Cliente ya existe → solo agregar tag si segmento es Lead frío o vacío Y cuenta activa
     const segExistente = existing.segmento || '';
     const puedeTagSoloCuenta = segExistente === 'Lead frío' || segExistente === '';
-    if (puedeTagSoloCuenta) {
+    if (puedeTagSoloCuenta && tieneCtaActiva) {
       await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
     }
     if (acceptsMarketing) {
@@ -139,7 +142,9 @@ async function handleCustomerCreate(payload) {
   });
 
   if (rowIndex) {
-    await sheetsService.appendTag(rowIndex, 'Solo cuenta');
+    if (tieneCtaActiva) {
+      await sheetsService.appendTag(rowIndex, 'Solo cuenta');
+    }
     if (acceptsMarketing) {
       await sheetsService.updateEmailMarketing(rowIndex, 'SI');
     }
