@@ -5,6 +5,7 @@ const path = require('path');
 const webhookHandler = require('./webhookHandler');
 const shopifyWebhookHandler = require('./shopifyWebhookHandler');
 const { getTranscripts } = require('./transcriptService');
+const { invalidateCache } = require('./knowledgeService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -62,6 +63,11 @@ app.get('/wa/:origen', (req, res) => {
   const encoded = encodeURIComponent(texto);
   const url = `https://wa.me/17623490579?text=${encoded}`;
   res.redirect(302, url);
+});
+
+app.post('/admin/refresh-kb', (req, res) => {
+  invalidateCache();
+  res.json({ ok: true, message: 'Cache invalidado' });
 });
 
 app.use((req, res) => {

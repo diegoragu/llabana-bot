@@ -1,5 +1,5 @@
 const Anthropic = require('@anthropic-ai/sdk');
-const shopifyService = require('./shopifyService');
+const knowledgeService = require('./knowledgeService');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -53,7 +53,7 @@ Si se da CUALQUIERA de estas situaciones, responde SOLO con la palabra: ESCALAR_
 (El mayoreo ya fue manejado antes de llegar aquí — no necesitas detectarlo)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
-async function chat(history, customer, productos = []) {
+async function chat(history, customer, query = '') {
   let customerContext = '';
   if (customer) {
     const channelLabel = customer.channel === 'paqueteria'
@@ -77,13 +77,25 @@ async function chat(history, customer, productos = []) {
     customerContext = '\n' + lines.join('\n');
   }
 
-  let productosContext = '';
-  if (productos.length > 0) {
-    const lista = productos.map(p => `- ${p.title} | $${p.price} | ${p.url}`).join('\n');
-    productosContext = `\n\n━━━ PRODUCTOS DISPONIBLES ━━━\n${lista}\nCuando el cliente pregunte por productos o precios, menciona estos productos específicos con sus precios reales y el link directo. No inventes productos.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-  }
+  // Cargar Knowledge Base y productos relevantes en paralelo
+  const [kb, productos] = await Promise.all([
+    knowledgeService.getKnowledgeBase(),
+    query ? knowledgeService.getProductosPorEspecie(query) : Promise.resolve(''),
+  ]);
 
-  const system        = `${SYSTEM_BASE}${productosContext}${customerContext ? '\n' + customerContext : ''}`;
+  // Sistema dinámico: KB del Sheets si está disponible, SYSTEM_BASE como fallback
+  const systemDynamic = kb
+    ? `A continuación están las instrucciones, tono y escenarios que debes seguir:\n\n${kb}`
+    : SYSTEM_BASE;
+
+  const productosContext = productos
+    ? `\n\n━━━ PRODUCTOS RELEVANTES ━━━\n${productos}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+    : '';
+
+  const system = customerContext
+    ? `${systemDynamic}${productosContext}\n${customerContext}`
+    : `${systemDynamic}${productosContext}`;
+
   const recentHistory = history.slice(-10);
 
   const response = await client.messages.create({

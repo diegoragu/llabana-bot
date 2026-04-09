@@ -701,7 +701,7 @@ async function handleActive(phone, message, session) {
 
   let response;
   try {
-    response = await claudeService.chat(session.conversationHistory, session.customer, productos);
+    response = await claudeService.chat(session.conversationHistory, session.customer, message);
   } catch (err) {
     console.error('claudeService.chat error:', err.message);
     return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
