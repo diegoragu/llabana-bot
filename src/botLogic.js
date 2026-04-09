@@ -321,19 +321,23 @@ async function handleAskingReturning(phone, message, session) {
 
   // Detectar estado mexicano en la respuesta → continuar como cliente nuevo
   if (ESTADOS_MX.test(message)) {
-    const tempData = { nameAttempts: 0 };
-    if (INTENT_KEYWORDS.test(message)) tempData.intent = message;
     const estadoMatch = message.match(ESTADOS_MX);
-    if (estadoMatch) tempData.estadoDetectado = estadoMatch[0];
+    const tempData = {
+      ...session.tempData,
+      nameAttempts: 0,
+      ...(INTENT_KEYWORDS.test(message) ? { intent: message } : {}),
+      ...(estadoMatch ? { estadoDetectado: estadoMatch[0] } : {}),
+    };
     sessionManager.updateSession(phone, { flowState: 'asking_name', tempData });
     return '¿Con quién tengo el gusto? 😊';
   }
 
   // Primera vez o ambiguo → pedir nombre, guardar intent si hay palabras clave
-  const tempData = { nameAttempts: 0 };
-  if (INTENT_KEYWORDS.test(message)) {
-    tempData.intent = message;
-  }
+  const tempData = {
+    ...session.tempData,
+    nameAttempts: 0,
+    ...(INTENT_KEYWORDS.test(message) ? { intent: message } : {}),
+  };
   sessionManager.updateSession(phone, { flowState: 'asking_name', tempData });
   return '¿Con quién tengo el gusto? 😊';
 }
@@ -345,7 +349,7 @@ async function handleAskingReturningEmail(phone, message, session) {
 
   // Si no quiere dar email o no es válido → tratar como nuevo
   if (!isValidEmail(input) || /^no$/i.test(input)) {
-    sessionManager.updateSession(phone, { flowState: 'asking_name', tempData: { nameAttempts: 0 } });
+    sessionManager.updateSession(phone, { flowState: 'asking_name', tempData: { ...session.tempData, nameAttempts: 0 } });
     return '¿Con quién tengo el gusto? 😊';
   }
 
@@ -372,7 +376,7 @@ async function handleAskingReturningEmail(phone, message, session) {
   }
 
   // No encontrado → continuar como nuevo desde nombre
-  sessionManager.updateSession(phone, { flowState: 'asking_name', tempData: { nameAttempts: 0 } });
+  sessionManager.updateSession(phone, { flowState: 'asking_name', tempData: { ...session.tempData, nameAttempts: 0 } });
   return 'No te encontramos en nuestros registros 🙏 No hay problema, te atiendo igual.\n\n¿Con quién tengo el gusto? 😊';
 }
 
