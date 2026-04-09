@@ -259,7 +259,7 @@ async function handleAskingMexico(phone, message, session) {
 
 // ── Conversación libre con Claude ─────────────────────────────────────────────
 
-const FLOW_PATTERNS = /(primera\s*ve[zs]|es\s*mi\s*primera|nunca\s*he|soy\s*nuev[oa])/i;
+const FLOW_PATTERNS = /(primera\s*ve[zs]|es\s*mi\s*primera|nunca\s*he|no\s*he|soy\s*nuev[oa]|no,?\s*primera)/i;
 
 async function handleActive(phone, message, session) {
   // "hola" con cliente activo → confirmar si quiere nueva consulta
