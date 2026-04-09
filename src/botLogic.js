@@ -325,8 +325,8 @@ async function handleActive(phone, message, session) {
         `Zona local (${zone} / CP: ${cp})`);
       const firstName = primerNombre(customerData.name);
       return firstName
-        ? `¡Listo, ${firstName}! 😊 Un asesor te contactará en breve.`
-        : '¡Listo! 😊 Un asesor te contactará en breve.';
+        ? `¡Listo, ${firstName}! 😊 En breve te contacta un asesor por este WhatsApp para ayudarte.`
+        : '¡Listo! 😊 En breve te contacta un asesor por este WhatsApp para ayudarte.';
     }
   }
 
