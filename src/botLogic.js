@@ -84,10 +84,15 @@ const RETURNING_PATTERNS = [
   /\bya\s+he\b/i, /\bantes\b/i, /\bregistrado\b/i,
 ];
 
-// Patrones para escalación: mayoreo, grandes cantidades, reventa
+// Patrones para escalación: mayoreo, grandes cantidades, reventa, negocio/emprendimiento
 const ESCALATION_PROFILE_PATTERNS = [
   /grandes?\s*cantidad/i, /mayoreo/i, /reventa/i,
   /revendedor/i, /distribuidor/i, /por\s*mayor/i, /\bal\s*mayor\b/i,
+  /emprender/i, /negocio/i, /\bnegoci/i,
+  /distribuir/i, /distribuc/i,
+  /punto\s*de\s*venta/i,
+  /tienda\s*propia/i, /poner\s*(un\s*)?(negocio|tienda)/i,
+  /vender\s*alimento/i, /comercializar/i,
 ];
 
 // Patrones para solicitud de asesor humano
