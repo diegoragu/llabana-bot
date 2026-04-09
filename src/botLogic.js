@@ -84,14 +84,13 @@ const RESET_PATTERNS = /^(inicio|men[uú]|empezar|reset|start|comenzar|nueva\s*c
 const DESPEDIDA_PATTERNS = /^(gracias|muchas gracias|seria todo|sería todo|ok gracias|vale gracias|listo gracias|perfecto gracias|hasta luego|bye|adios|adiós|no gracias|es todo|eso es todo|por ahora es todo|nada mas|nada más)$/i;
 
 const ENTRY_POINT_MAP = {
-  'los encontré en google':                              'Google Business',
-  'los vi en facebook':                                  'Facebook',
-  'estoy en su página web':                              'Web - Header',
-  'los contacto desde su página':                        'Web - Footer',
-  'me pasaron al whatsapp desde el chat':                'Web - Chatbot',
-  'vi un producto en su página':                         'Web - Producto',
-  'vi un producto en la tienda en línea':                'Tienda - Producto',
-  'me pasaron al whatsapp desde el chat de la tienda':   'Tienda - Chatbot',
+  'quiero mas informacion':               'Llabana.com Footer',
+  'me podrian dar mas informacion':       'Llabana.com Header',
+  'quiero mas informes':                  'Llabana.com Chatbot',
+  'vi un producto que me interesa':       'Llabana.com Producto',
+  'vi un producto en su tienda en linea': 'Tienda Producto',
+  'me mandaron aqui desde la tienda':     'Tienda Chatbot',
+  'los vi en facebook':                   'Facebook',
 };
 
 // ── Helpers de detección ──────────────────────────────────────────────────────
