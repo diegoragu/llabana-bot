@@ -2,14 +2,13 @@
  * Lógica central del bot de Llabana — flujo conversacional natural.
  *
  * Estados:
- *   asking_mexico   → filtro inicial (¿estás en México?)
- *   asking_name     → solo si no tiene nombre
- *   active          → conversación libre con Claude
- *   waiting_for_wig → escalado a asesor
- *   escalated       → post-escalación
+ *   asking_mexico    → filtro inicial único
+ *   active           → conversación libre con Claude
+ *   waiting_for_wig  → escalado a asesor
+ *   escalated        → post-escalación
+ *   confirming_reset → confirmación de reinicio
  *
- * Cliente EXISTENTE (encontrado por teléfono): → active directamente.
- * Registro en Sheets: se hace cuando el cliente da su CP en conversación activa.
+ * Nombre y CP se capturan naturalmente dentro de la conversación activa.
  */
 
 const sessionManager = require('./sessionManager');
@@ -32,12 +31,6 @@ const WELCOME_VARIANTS = [
   '¡Hola! 👋 Soy el asistente de Llabana, tu aliado en alimento balanceado 🌾 ¿Estás en México?',
   '¡Bienvenido! 🌾 Soy el asistente de Llabana. ¿Nos escribes desde México?',
   '¡Hola! 👋 Llabana, alimento balanceado para tus animales 🌾 ¿Estás en México?',
-];
-
-const GREETING_NAME_VARIANTS = [
-  n => `¡Mucho gusto, ${n}! 😊 ¿En qué te puedo ayudar hoy?`,
-  n => `¡Qué bueno que nos escribes, ${n}! ¿En qué te ayudo?`,
-  n => `Gracias ${n} 🌾 ¿Qué necesitas hoy?`,
 ];
 
 const CHANNEL_VARIANTS = [
@@ -90,7 +83,6 @@ const RESET_PATTERNS = /^(inicio|men[uú]|empezar|reset|start|comenzar|nueva\s*c
 
 const DESPEDIDA_PATTERNS = /^(gracias|muchas gracias|seria todo|sería todo|ok gracias|vale gracias|listo gracias|perfecto gracias|hasta luego|bye|adios|adiós|no gracias|es todo|eso es todo|por ahora es todo|nada mas|nada más)$/i;
 
-// Mapa de textos pre-cargados de WhatsApp a punto de entrada
 const ENTRY_POINT_MAP = {
   'los encontré en google':                              'Google Business',
   'los vi en facebook':                                  'Facebook',
@@ -174,8 +166,9 @@ async function handleMessage(phone, messageBody) {
     sessionManager.deleteSession(phone);
   }
 
-  // Detectar origen de tracking en sesión existente
   let session = sessionManager.getSession(phone);
+
+  // Detectar origen en sesión activa
   if (session) {
     const origenNuevo = detectarOrigen(messageBody);
     if (origenNuevo !== 'Directo' &&
@@ -183,9 +176,8 @@ async function handleMessage(phone, messageBody) {
       session.tempData = { ...session.tempData, entryPoint: origenNuevo };
       sessionManager.updateSession(phone, { tempData: session.tempData });
       if (session.customer?.rowIndex) {
-        sheetsService.updateOrderData(session.customer.rowIndex, {
-          entryPoint: origenNuevo,
-        }).catch(() => {});
+        sheetsService.updateOrderData(session.customer.rowIndex,
+          { entryPoint: origenNuevo }).catch(() => {});
       }
       console.log(`🔗 Origen actualizado en sesión activa: ${origenNuevo}`);
     }
@@ -195,34 +187,27 @@ async function handleMessage(phone, messageBody) {
   if (!session) {
     const entryPoint = detectarOrigen(messageBody);
     session = sessionManager.createSession(phone);
-    session.tempData.entryPoint = entryPoint;
+    session.tempData = { entryPoint };
     sessionManager.updateSession(phone, { tempData: session.tempData });
 
     const customer = await sheetsService.findCustomer(phone);
 
     if (customer) {
-      // Cliente existente → active directamente
-      const nombre = primerNombre(customer.name);
+      // Cliente existente → directo a active
+      const customerData = {
+        ...customer,
+        channel:       'paqueteria',
+        channelDetail: 'Nacional',
+      };
       sessionManager.updateSession(phone, {
         flowState: 'active',
-        customer: {
-          ...customer,
-          channel:       'paqueteria',
-          channelDetail: 'Nacional',
-        },
+        customer:  customerData,
       });
       if (entryPoint !== 'Directo') {
         sheetsService.updateOrderData(customer.rowIndex, { entryPoint }).catch(() => {});
       }
-      sheetsService.appendConversationLog(
-        phone, '[inicio sesión]', `Bienvenida a cliente existente ${customer.name}`
-      ).catch(() => {});
-
-      if (!nombre) {
-        sessionManager.updateSession(phone, { flowState: 'asking_name' });
-        return '¡Hola! 👋 ¿Con quién tengo el gusto?';
-      }
-      return `¡Hola ${nombre}! 👋 ¿En qué te puedo ayudar hoy?`;
+      // Procesar su primer mensaje directamente con Claude
+      return handleActive(phone, messageBody, sessionManager.getSession(phone));
     }
 
     // Cliente nuevo → filtro México
@@ -230,40 +215,16 @@ async function handleMessage(phone, messageBody) {
     return pick(WELCOME_VARIANTS);
   }
 
-  // Rutear por estado
+  // Rutear
   switch (session.flowState) {
-    case 'confirming_reset': return handleConfirmingReset(phone, messageBody, session);
     case 'asking_mexico':    return handleAskingMexico(phone, messageBody, session);
-    case 'asking_name':      return handleAskingName(phone, messageBody, session);
     case 'active':           return handleActive(phone, messageBody, session);
     case 'waiting_for_wig':  return handleWaitingForWig(phone, messageBody, session);
     case 'escalated':        return handleEscalated(phone, messageBody, session);
+    case 'confirming_reset': return handleConfirmingReset(phone, messageBody, session);
     default:
       sessionManager.deleteSession(phone);
       return 'Algo salió mal. Escríbeme de nuevo.';
-  }
-}
-
-// ── Confirmar reset (fallback) ─────────────────────────────────────────────────
-
-const CONFIRM_RESET_PATTERNS = /^(s[ií]|empezar|nueva|nuevo|de\s*nuevo|empezar\s*de\s*nuevo|nueva\s*consulta)$/i;
-
-async function handleConfirmingReset(phone, message, session) {
-  if (CONFIRM_RESET_PATTERNS.test(message.trim())) {
-    sessionManager.deleteSession(phone);
-    sessionManager.createSession(phone);
-    sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
-    return pick(WELCOME_VARIANTS);
-  }
-
-  const prevState = session.tempData?._prevState || 'active';
-  sessionManager.updateSession(phone, { flowState: prevState });
-  const restored = sessionManager.getSession(phone);
-
-  switch (prevState) {
-    case 'asking_mexico': return handleAskingMexico(phone, message, restored);
-    case 'asking_name':   return handleAskingName(phone, message, restored);
-    default:              return handleActive(phone, message, restored);
   }
 }
 
@@ -287,83 +248,155 @@ async function handleAskingMexico(phone, message, session) {
     return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor.';
   }
 
-  // Pasar directo a active — Claude lleva la conversación desde aquí
+  // México confirmado → active
   sessionManager.updateSession(phone, { flowState: 'active' });
-  return '¿Con quién tengo el gusto? 😊';
+  return pick([
+    '¿En qué te puedo ayudar? 😊',
+    '¿Qué necesitas hoy? 🌾',
+    '¿En qué te ayudo? 😊',
+  ]);
 }
 
-// ── Nombre ────────────────────────────────────────────────────────────────────
+// ── Conversación libre con Claude ─────────────────────────────────────────────
 
-const INTENT_KEYWORDS = /croquetas?|alimento|comida|producto|precio|cotizaci[oó]n|perro|gato|caballo|cerdo|borrego|ave|pez|pollo|vaca|toro|codorniz/i;
-const FLOW_RESPONSE_PATTERNS = /(primera\s*ve[zs]|es\s*mi\s*primera|nunca\s*he|no\s*he|soy\s*nuev[oa]|no,?\s*primera)/i;
+const FLOW_PATTERNS = /(primera\s*ve[zs]|es\s*mi\s*primera|nunca\s*he|soy\s*nuev[oa])/i;
 
-async function handleAskingName(phone, message, session) {
-  const attempts = session.tempData?.nameAttempts ?? 0;
-
-  // Respuestas de flujo que no son nombres
-  if (FLOW_RESPONSE_PATTERNS.test(message)) {
-    return '¿Con quién tengo el gusto? 😊';
+async function handleActive(phone, message, session) {
+  // "hola" con cliente activo → confirmar si quiere nueva consulta
+  if (/^hola$/i.test(message.trim()) && session.customer) {
+    session.tempData = { ...session.tempData, _prevState: 'active' };
+    sessionManager.updateSession(phone, {
+      flowState: 'confirming_reset',
+      tempData:  session.tempData,
+    });
+    return '¿Quieres empezar una nueva consulta o seguimos con lo que teníamos? 😊';
   }
 
-  // Intención de producto/precio → guardar y seguir pidiendo nombre
-  if (INTENT_KEYWORDS.test(message)) {
-    session.tempData = { ...session.tempData, intent: message, nameAttempts: attempts };
-    sessionManager.updateSession(phone, { tempData: session.tempData });
-    return 'Anoto eso 📝 ¿Y tu nombre cuál es?';
+  // Solicitud de asesor humano
+  if (isRequestingHuman(message)) {
+    await notifyWig(phone, session, 'Cliente solicita hablar con un asesor');
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    return 'Ahorita te conecto con un asesor 🙌';
   }
 
-  const nombre = sheetsService.limpiarNombre(message);
+  // Escalación por perfil (mayoreo, negocio, etc.)
+  if (isEscalationProfile(message)) {
+    await notifyWig(phone, session, `Perfil mayoreo/negocio: "${message.substring(0, 80)}"`);
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    return 'Ahorita te conecto con un asesor 🙌';
+  }
 
-  if (nombre) {
+  // Detectar CP → registrar cliente si aún no está registrado
+  const cpMatch = message.match(/\b(\d{5})\b/);
+  if (cpMatch && !session.customer?.rowIndex) {
+    const cp = cpMatch[1];
+    const isLocal = cpIsCDMX(cp) || cpIsEdomex(cp);
+    const { state, city } = await sheetsService.lookupCpMX(cp);
+
     const customerData = {
       phone,
-      name:          nombre,
+      name:          session.tempData?.name || session.customer?.name || '',
+      email:         '',
+      state:         state || cpToState(cp),
+      city,
+      cp,
       channel:       'paqueteria',
       channelDetail: 'Nacional',
       segmento:      'Lead frío',
       aceWa:         'SI',
       entryPoint:    session.tempData?.entryPoint || 'Directo',
     };
-    sessionManager.updateSession(phone, {
-      flowState: 'active',
-      customer:  customerData,
-      tempData:  { ...session.tempData, name: nombre },
-    });
 
-    const first = primerNombre(nombre);
-
-    // Si había intent guardado → responderlo de inmediato con Claude
-    if (session.tempData?.intent) {
-      session.conversationHistory.push({ role: 'user', content: session.tempData.intent });
-      let response;
-      try {
-        response = await claudeService.chat(
-          session.conversationHistory,
-          customerData,
-          session.tempData.intent
-        );
-      } catch {
-        response = '¿En qué te puedo ayudar? 😊';
-      }
-      session.conversationHistory.push({ role: 'assistant', content: response });
-      sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
-      return `¡Mucho gusto, ${first}! 😊\n\n${response}`;
+    let rowIndex = null;
+    try {
+      rowIndex = await sheetsService.registerCustomer(customerData);
+    } catch (err) {
+      console.error('Error registrando cliente:', err.message);
     }
 
-    return `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`;
+    const updatedCustomer = { ...customerData, rowIndex };
+    sessionManager.updateSession(phone, { customer: updatedCustomer });
+    session.customer = updatedCustomer;
+
+    if (isLocal) {
+      const zone = cpIsCDMX(cp) ? 'CDMX' : 'Estado de México';
+      sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+      await notifyWig(phone, { ...session, customer: updatedCustomer },
+        `Zona local (${zone} / CP: ${cp})`);
+      const firstName = primerNombre(customerData.name);
+      return firstName
+        ? `¡Listo, ${firstName}! 😊 Un asesor te contactará en breve.`
+        : '¡Listo! 😊 Un asesor te contactará en breve.';
+    }
   }
 
-  // Nombre inválido
-  if (attempts < 2) {
-    sessionManager.updateSession(phone, {
-      tempData: { ...session.tempData, nameAttempts: attempts + 1 },
-    });
-    return '¿Me dices tu nombre? Por ejemplo: Juan o María 😊';
+  // Detectar nombre si aún no lo tenemos
+  if (!session.customer?.name && !session.tempData?.name) {
+    const nombreDetectado = sheetsService.limpiarNombre(message);
+    const esNombre = nombreDetectado &&
+                     !FLOW_PATTERNS.test(message) &&
+                     message.trim().split(/\s+/).length <= 4 &&
+                     !message.includes('?') &&
+                     !/\d{5}/.test(message);
+    if (esNombre) {
+      session.tempData = { ...session.tempData, name: nombreDetectado };
+      sessionManager.updateSession(phone, { tempData: session.tempData });
+      if (session.customer?.rowIndex) {
+        sheetsService.updateOrderData(session.customer.rowIndex,
+          { name: nombreDetectado }).catch(() => {});
+      }
+    }
   }
 
-  // Agotó intentos → active sin nombre
-  sessionManager.updateSession(phone, { flowState: 'active' });
-  return '¿En qué te puedo ayudar? 😊';
+  // Conversación con Claude
+  session.conversationHistory.push({ role: 'user', content: message });
+
+  let response;
+  try {
+    response = await claudeService.chat(
+      session.conversationHistory,
+      session.customer,
+      message
+    );
+  } catch (err) {
+    console.error('claudeService.chat error:', err.message);
+    return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
+  }
+
+  if (response.includes('ESCALAR_A_WIG')) {
+    await notifyWig(phone, session, 'Detectado por Claude: queja o situación especial');
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    return 'Ahorita te conecto con un asesor 🙌';
+  }
+
+  session.conversationHistory.push({ role: 'assistant', content: response });
+  sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+  sheetsService.appendConversationLog(phone, message, response).catch(() => {});
+
+  return response;
+}
+
+// ── Confirmar reset ───────────────────────────────────────────────────────────
+
+const CONFIRM_RESET_PATTERNS = /^(s[ií]|empezar|nueva|nuevo|de\s*nuevo|empezar\s*de\s*nuevo|nueva\s*consulta)$/i;
+
+async function handleConfirmingReset(phone, message, session) {
+  if (CONFIRM_RESET_PATTERNS.test(message.trim())) {
+    sessionManager.deleteSession(phone);
+    sessionManager.createSession(phone);
+    sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
+    return pick(WELCOME_VARIANTS);
+  }
+
+  // Continuar con el estado anterior
+  const prevState = session.tempData?._prevState || 'active';
+  sessionManager.updateSession(phone, { flowState: prevState });
+  const restored = sessionManager.getSession(phone);
+
+  switch (prevState) {
+    case 'asking_mexico': return handleAskingMexico(phone, message, restored);
+    default:              return handleActive(phone, message, restored);
+  }
 }
 
 // ── Esperando asesor ──────────────────────────────────────────────────────────
@@ -412,95 +445,6 @@ async function handleEscalated(phone, message, session) {
   session.conversationHistory.push({ role: 'assistant', content: response });
   sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
   return response + '\n\n_(Un asesor también te contactará en breve)_';
-}
-
-// ── Conversación libre con Claude ─────────────────────────────────────────────
-
-async function handleActive(phone, message, session) {
-  // Detectar CP en el mensaje si el cliente aún no está registrado
-  const cpMatch = message.match(/\b(\d{5})\b/);
-  if (cpMatch && !session.customer?.rowIndex) {
-    const cp = cpMatch[1];
-    const isLocal = cpIsCDMX(cp) || cpIsEdomex(cp);
-    const { state, city } = await sheetsService.lookupCpMX(cp);
-
-    const customerData = {
-      ...session.customer,
-      phone,
-      cp,
-      state:         state || cpToState(cp),
-      city,
-      channel:       'paqueteria',
-      channelDetail: 'Nacional',
-      segmento:      'Lead frío',
-      aceWa:         'SI',
-      entryPoint:    session.tempData?.entryPoint || 'Directo',
-    };
-
-    let rowIndex = null;
-    try {
-      rowIndex = await sheetsService.registerCustomer(customerData);
-    } catch (err) {
-      console.error('Error registrando cliente en handleActive:', err.message);
-    }
-
-    sessionManager.updateSession(phone, {
-      customer: { ...customerData, rowIndex },
-    });
-    session = sessionManager.getSession(phone);
-
-    if (isLocal) {
-      const zone = cpIsCDMX(cp) ? 'CDMX' : 'Estado de México';
-      sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-      await notifyWig(phone, { ...session, customer: customerData },
-        `Zona local (${zone} / CP: ${cp})`);
-      const firstName = primerNombre(session.customer?.name || '');
-      return firstName
-        ? `¡Listo, ${firstName}! 😊 Un asesor te contactará en breve por este WhatsApp.`
-        : '¡Listo! 😊 Un asesor te contactará en breve por este WhatsApp.';
-    }
-  }
-
-  // Detección rápida: cliente pide hablar con un asesor/humano
-  if (isRequestingHuman(message)) {
-    await notifyWig(phone, session, 'Cliente solicita hablar con un asesor');
-    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-    return 'Ahorita te conecto con un asesor 🙌';
-  }
-
-  session.conversationHistory.push({ role: 'user', content: message });
-
-  // Cargar productos por especie detectada en el mensaje
-  let productos = session.productos || [];
-  if (productos.length === 0) {
-    const handle = shopifyService.detectarEspecie(message);
-    if (handle) {
-      productos = await shopifyService.getProductosPorEspecie(handle, 3);
-      session.productos = productos;
-      sessionManager.updateSession(phone, { productos });
-    }
-  }
-
-  let response;
-  try {
-    response = await claudeService.chat(session.conversationHistory, session.customer, message);
-  } catch (err) {
-    console.error('claudeService.chat error:', err.message);
-    return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
-  }
-
-  if (response.includes('ESCALAR_A_WIG')) {
-    sheetsService.updateSegmento(phone, 'Mayoreo / Reventa').catch(() => {});
-    await notifyWig(phone, session, 'Detectado por Claude: queja o enojo');
-    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-    return 'Ahorita te conecto con un asesor 🙌';
-  }
-
-  session.conversationHistory.push({ role: 'assistant', content: response });
-  sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
-  sheetsService.appendConversationLog(phone, message, response).catch(() => {});
-
-  return response;
 }
 
 // ── Notificación a asesor ─────────────────────────────────────────────────────
