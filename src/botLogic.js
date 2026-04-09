@@ -214,6 +214,22 @@ async function handleMessage(phone, messageBody) {
     return pick(WELCOME_VARIANTS);
   }
 
+  // Detectar origen de tracking en cualquier mensaje, no solo en sesión nueva
+  if (session) {
+    const origenNuevo = detectarOrigen(messageBody);
+    if (origenNuevo !== 'Directo' &&
+        (!session.tempData?.entryPoint || session.tempData.entryPoint === 'Directo')) {
+      session.tempData = { ...session.tempData, entryPoint: origenNuevo };
+      sessionManager.updateSession(phone, { tempData: session.tempData });
+      if (session.customer?.rowIndex) {
+        sheetsService.updateOrderData(session.customer.rowIndex, {
+          entryPoint: origenNuevo,
+        }).catch(() => {});
+      }
+      console.log(`🔗 Origen actualizado en sesión activa: ${origenNuevo}`);
+    }
+  }
+
   // ── Rutear por estado ─────────────────────────────────────────────────────
   switch (session.flowState) {
     case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
