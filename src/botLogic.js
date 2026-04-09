@@ -228,8 +228,7 @@ async function handleMessage(phone, messageBody) {
       sessionManager.deleteSession(phone);
       return OUT_OF_COVERAGE_MSG;
     case 'waiting_for_wig':        return handleWaitingForWig(phone, messageBody, session);
-    case 'escalated':
-      return 'Tu mensaje ya fue enviado a un asesor. Pronto te contactan 🤝';
+    case 'escalated':              return handleEscalated(phone, messageBody, session);
     default:
       sessionManager.deleteSession(phone);
       return 'Algo salió mal. Escríbeme de nuevo.';
@@ -598,7 +597,7 @@ const DESPEDIDA_PATTERNS = /^(gracias|muchas gracias|seria todo|sería todo|ok g
 async function handleWaitingForWig(phone, message, session) {
   // Detectar despedida → cerrar conversación amablemente
   if (DESPEDIDA_PATTERNS.test(message.trim())) {
-    sessionManager.deleteSession(phone);
+    sessionManager.updateSession(phone, { flowState: 'escalated' });
     return '¡Con gusto! En breve te contacta un asesor 🙌 Que tengas buen día 🌾';
   }
 
@@ -622,6 +621,26 @@ async function handleWaitingForWig(phone, message, session) {
 
   // Respuesta corta o ambigua → mensaje estándar
   return 'En breve te contacta un asesor 🙌';
+}
+
+async function handleEscalated(phone, message, session) {
+  if (DESPEDIDA_PATTERNS.test(message.trim())) {
+    return '¡Hasta luego! 🌾';
+  }
+
+  session.conversationHistory.push({ role: 'user', content: message });
+  let response;
+  try {
+    response = await claudeService.chat(session.conversationHistory, session.customer);
+  } catch {
+    response = 'En breve te contacta un asesor para ayudarte 🙌';
+  }
+  if (response.includes('ESCALAR_A_WIG')) {
+    return 'En breve te contacta un asesor 🙌';
+  }
+  session.conversationHistory.push({ role: 'assistant', content: response });
+  sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+  return response + '\n\n_(Un asesor también te contactará en breve)_';
 }
 
 // ── Conversación libre con Claude ─────────────────────────────────────────────
