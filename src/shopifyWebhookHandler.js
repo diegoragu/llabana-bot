@@ -97,48 +97,46 @@ async function handleCustomerCreate(payload) {
   }
 
   const acceptsMarketing = !!payload.accepts_marketing;
-  const tieneCtaActiva   = payload.state === 'enabled';
+  const accountState     = payload.state || 'disabled';
+  const tieneCtaActiva   = accountState === 'enabled';
+
+  console.log(`   customers/create: ${email} | state=${accountState}`);
+
   const existing = await sheetsService.findCustomerByEmail(email);
 
-  console.log(`   customers/create: ${email} | state=${payload.state}`);
-
   if (existing) {
-    // Cliente ya existe → solo agregar tag si segmento es Lead frío o vacío Y cuenta activa
     const segExistente = existing.segmento || '';
-    const puedeTagSoloCuenta = segExistente === 'Lead frío' || segExistente === '';
-    if (puedeTagSoloCuenta && tieneCtaActiva) {
+    // Solo actualizar a "Solo cuenta" si tiene cuenta activa y segmento es Lead frío o vacío
+    if (tieneCtaActiva && (segExistente === 'Lead frío' || !segExistente)) {
+      await sheetsService.updateOrderData(existing.rowIndex, { segmento: 'Solo cuenta' });
       await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
     }
     if (acceptsMarketing) {
       await sheetsService.updateEmailMarketing(existing.rowIndex, 'SI');
     }
-    // Guardar teléfono si el registro actual no tiene uno
     if (payload.phone && !existing.phone) {
       const formattedPhone = formatPhoneForStorage(payload.phone);
       if (formattedPhone) await sheetsService.updateCustomerPhone(existing.rowIndex, formattedPhone);
     }
-    console.log(`   customers/create: ${email} ya existe → tag + marketing actualizado`);
+    console.log(`   customers/create: ${email} ya existe → actualizado`);
     return;
   }
 
   // Cliente nuevo → registrar fila
   const name = limpiarNombre(`${(payload.first_name || '').trim()} ${(payload.last_name || '').trim()}`);
-  const state = payload.default_address?.province || '';
-  const city  = payload.default_address?.city     || '';
-  const phone = payload.phone || '';
+  const state2 = payload.default_address?.province || '';
+  const city   = payload.default_address?.city     || '';
+  const phone  = payload.phone || '';
+
+  // Segmento inicial basado en state
+  const segmentoInicial = tieneCtaActiva ? 'Solo cuenta' : 'Lead frío';
 
   const rowIndex = await sheetsService.registerCustomer({
-    phone,
-    name,
-    email,
-    state,
-    city,
-    cp:            '',
-    species:       '',
-    channel:       '',
-    channelDetail: '',
-    segmento:      'Lead frío',
-    origen:        'Shopify',
+    phone, name, email,
+    state: state2, city,
+    cp: '', species: '', channel: '', channelDetail: '',
+    segmento: segmentoInicial,
+    origen: 'Shopify',
   });
 
   if (rowIndex) {
@@ -150,7 +148,7 @@ async function handleCustomerCreate(payload) {
     }
   }
 
-  console.log(`   ✅ customers/create: ${email} registrado como "Lead frío" | rowIndex: ${rowIndex}`);
+  console.log(`   ✅ customers/create: ${email} → ${segmentoInicial} | rowIndex: ${rowIndex}`);
 }
 
 // ── Shopify Admin API ─────────────────────────────────────────────────────────
@@ -248,9 +246,13 @@ async function handleCustomerUpdate(payload) {
   let shopifyTags    = new Set();
   let marketingValue = null;
 
+  let customerState = payload.state || 'disabled';
+
   if (customerId) {
     const customer = await fetchShopifyCustomer(customerId);
     if (customer?.tags) shopifyTags = parseShopifyTags(customer.tags);
+    // state real desde la Admin API (más confiable que el payload)
+    if (customer?.state) customerState = customer.state;
     // marketing desde el customer completo de la API
     const apiConsent = customer?.email_marketing_consent;
     if (apiConsent?.state === 'subscribed')        marketingValue = 'SI';
@@ -264,12 +266,11 @@ async function handleCustomerUpdate(payload) {
     else if (consent?.state === 'unsubscribed') marketingValue = 'NO';
   }
 
-  const hasFirstName = !!(payload.first_name || '').trim();
+  const hasFirstName   = !!(payload.first_name || '').trim();
+  const hasCarrito     = shopifyTags.has('carrito abandonado');
+  const tieneCtaActiva = customerState === 'enabled';
 
-  const hasCarrito    = shopifyTags.has('carrito abandonado');
-  const hasSoloCuenta = shopifyTags.has('solo cuenta');
-
-  if (!marketingValue && !hasFirstName && !hasCarrito && !hasSoloCuenta) return;
+  if (!marketingValue && !hasFirstName && !hasCarrito && !tieneCtaActiva) return;
 
   const existing = await sheetsService.findCustomerByEmail(email);
   if (!existing) {
@@ -293,6 +294,14 @@ async function handleCustomerUpdate(payload) {
     }
   }
 
+  // state=enabled → actualizar a "Solo cuenta" si el segmento es Lead frío o vacío
+  // (se evalúa antes del carrito para que carrito siempre tenga prioridad)
+  if (tieneCtaActiva && (seg === 'Lead frío' || !seg) && !hasCarrito) {
+    await sheetsService.updateOrderData(existing.rowIndex, { segmento: 'Solo cuenta' });
+    await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
+    console.log(`   customers/update: ${email} → Solo cuenta (state=enabled)`);
+  }
+
   // Tag "Carrito abandonado" → actualizar segmento (nunca sobreescribir Comprador/Recompra)
   if (hasCarrito && seg !== 'Comprador' && seg !== 'Recompra') {
     await sheetsService.updateOrderData(existing.rowIndex, { segmento: 'Carrito abandonado' });
@@ -300,13 +309,7 @@ async function handleCustomerUpdate(payload) {
     console.log(`   🛒 customers/update: ${email} → Carrito abandonado (via Admin API)`);
   }
 
-  // Tag "Solo cuenta" → agregar al historial solo si el segmento es Lead frío o está vacío
-  if (hasSoloCuenta && !hasCarrito && (seg === 'Lead frío' || !seg)) {
-    await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
-    console.log(`   customers/update: ${email} → tag "Solo cuenta" registrado`);
-  }
-
-  console.log(`   ✅ customers/update: ${email} | mkt=${marketingValue} carrito=${hasCarrito} soloCuenta=${hasSoloCuenta}`);
+  console.log(`   ✅ customers/update: ${email} | mkt=${marketingValue} carrito=${hasCarrito} state=${customerState}`);
 }
 
 // ── Evento: orders/paid ───────────────────────────────────────────────────────
