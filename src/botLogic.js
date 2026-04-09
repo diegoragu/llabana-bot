@@ -332,11 +332,15 @@ async function handleActive(phone, message, session) {
   // Detectar nombre si aún no lo tenemos
   if (!session.customer?.name && !session.tempData?.name) {
     const nombreDetectado = sheetsService.limpiarNombre(message);
+    const NO_NOMBRE_PATTERNS = /^(para|con|de|en|por|sin|sobre|quiero|busco|tengo|necesito|hola|buenos|buenas|gracias|ok|si|no|bien|mal|claro|perfecto|listo|dale|sale)\b/i;
+
     const esNombre = nombreDetectado &&
                      !FLOW_PATTERNS.test(message) &&
+                     !NO_NOMBRE_PATTERNS.test(message.trim()) &&
                      message.trim().split(/\s+/).length <= 4 &&
                      !message.includes('?') &&
-                     !/\d{5}/.test(message);
+                     !/\d{5}/.test(message) &&
+                     !/\b(perro|gato|cerdo|caballo|borrego|ave|pez|pollo|vaca|toro|codorniz|gallina|conejo|porcino|bovino)\b/i.test(message);
     if (esNombre) {
       session.tempData = { ...session.tempData, name: nombreDetectado };
       sessionManager.updateSession(phone, { tempData: session.tempData });
