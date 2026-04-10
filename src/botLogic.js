@@ -324,8 +324,11 @@ async function handleActive(phone, message, session) {
   }
 
   // Detectar CP → registrar cliente si aún no está registrado
-  const cpMatch = message.match(/\b(\d{5})\b/);
-  if (cpMatch && !session.customer?.rowIndex) {
+  // Excluir números largos (teléfonos, etc.) para evitar falsos positivos
+  const cpMatch = message.match(/(?<!\d)(\d{5})(?!\d)/);
+  const tieneNumeroLargo = /\d{7,}/.test(message);
+
+  if (cpMatch && !tieneNumeroLargo && !session.customer?.rowIndex) {
     const cp = cpMatch[1];
     const isLocal = cpIsCDMX(cp) || cpIsEdomex(cp);
     const { state, city } = await sheetsService.lookupCpMX(cp);
