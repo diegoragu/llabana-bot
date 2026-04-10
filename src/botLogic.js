@@ -385,6 +385,14 @@ async function handleActive(phone, message, session) {
     return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
   }
 
+  // Eliminar saludos dobles — Claude a veces genera saludos
+  // aunque ya se presentó antes
+  const SALUDO_PATTERNS = /^[¡!]?(hola|bienvenid[oa]|buenos\s*d[ií]as|buenas\s*tardes|buenas\s*noches)[,!.\s]*/i;
+  response = response.replace(SALUDO_PATTERNS, '').trim();
+  if (!response) {
+    response = '¿En qué te puedo ayudar? 😊';
+  }
+
   if (response.includes('ESCALAR_A_WIG')) {
     await notifyWig(phone, session, 'Detectado por Claude: queja o situación especial');
     sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
