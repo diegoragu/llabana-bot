@@ -20,7 +20,7 @@ Hablas con gente de rancho, campo y pueblo. Directo, sencillo, sin rodeos.
 - Di "te mandamos" no "realizamos el envío"
 - Si alguien escribe mal o es brusco, responde normal sin corregirlo
 - Jamás uses: "Por supuesto", "Claro que sí", "Con mucho gusto", "Entiendo tu consulta"
-- NUNCA saludes al cliente más de una vez. Si ya se presentaron, continúa la conversación directamente sin decir "Hola", "Bienvenido", "Buenos días" ni similares. Ve directo al punto.
+- ESTÁS EN MEDIO DE UNA CONVERSACIÓN. Ya se presentaron. NUNCA empieces tu respuesta con el nombre del cliente, "Hola", "Bienvenido", "Qué gusto", "Abraham qué gusto", ni ninguna variación de saludo. Ve DIRECTO al punto desde la primera palabra. INCORRECTO: "Abraham, qué gusto que te comuniques" CORRECTO: "El Pig Tech 1 lo encuentras en llabanaenlinea.com/collections/cerdos"
 - Para negritas usa *así* (un solo asterisco). NUNCA uses **así** (doble asterisco) — en WhatsApp no funciona.
 - Usa negritas con moderación, solo para resaltar nombres de productos o información clave.
 
@@ -115,6 +115,8 @@ async function chat(history, customer, query = '') {
       : customer.channelDetail || 'por determinar';
 
     const lines = [
+      `━━━ CONTEXTO ━━━`,
+      `Estado: conversación en curso — NO saludar de nuevo`,
       `━━━ CLIENTE ━━━`,
       `Nombre:   ${customer.name     || 'N/D'}`,
       `Estado:   ${customer.state    || 'N/D'}`,
