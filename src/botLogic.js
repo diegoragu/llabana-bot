@@ -387,11 +387,25 @@ async function handleActive(phone, message, session) {
 
   // Eliminar saludos dobles — Claude a veces genera saludos
   // aunque ya se presentó antes
-  const SALUDO_PATTERNS = /^[¡!]?(hola|bienvenid[oa]|buenos\s*d[ií]as|buenas\s*tardes|buenas\s*noches)[,!.\s]*/i;
+  const SALUDO_PATTERNS = /^[¡!]?\s*(hola|bienvenid[oa]|buenos\s*d[ií]as|buenas\s*tardes|buenas\s*noches)[,!.\s]*/i;
+  const NOMBRE_SALUDO_PATTERNS = /^[¡!]?\s*[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+[,!.\s👋🌾😊]+\s*/;
   response = response.replace(SALUDO_PATTERNS, '').trim();
-  if (!response) {
-    response = '¿En qué te puedo ayudar? 😊';
+  if (NOMBRE_SALUDO_PATTERNS.test(response) && response.split('\n')[0].length < 30) {
+    response = response.replace(NOMBRE_SALUDO_PATTERNS, '').trim();
   }
+
+  // Eliminar respuestas duplicadas — cuando el debounce acumula mensajes,
+  // Claude puede generar dos párrafos que responden lo mismo
+  const parrafos = response.split(/\n\n+/);
+  if (parrafos.length > 2) {
+    // Comparar inicio de párrafos para detectar contenido repetido
+    const palabras0 = new Set(parrafos[0].toLowerCase().split(/\s+/).slice(0, 8));
+    const palabras1 = new Set(parrafos[1].toLowerCase().split(/\s+/).slice(0, 8));
+    const comunes = [...palabras0].filter(w => palabras1.has(w) && w.length > 3).length;
+    if (comunes >= 3) response = parrafos[0];
+  }
+
+  if (!response) response = '¿En qué te puedo ayudar? 😊';
 
   if (response.includes('ESCALAR_A_WIG')) {
     await notifyWig(phone, session, 'Detectado por Claude: queja o situación especial');
