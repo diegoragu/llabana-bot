@@ -256,7 +256,37 @@ async function handleAskingMexico(phone, message, session) {
     return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor.';
   }
 
-  // México confirmado → pedir nombre
+  // México confirmado → registrar lead y pedir nombre
+  let rowIndex = null;
+  try {
+    rowIndex = await sheetsService.registerCustomer({
+      phone,
+      name:          '',
+      email:         '',
+      state:         '',
+      city:          '',
+      cp:            '',
+      channel:       'paqueteria',
+      channelDetail: 'Nacional',
+      segmento:      'Lead frío',
+      aceWa:         'SI',
+      entryPoint:    session.tempData?.entryPoint || 'Directo',
+      origen:        'WhatsApp',
+    });
+    sessionManager.updateSession(phone, {
+      customer: {
+        phone,
+        rowIndex,
+        channel:       'paqueteria',
+        channelDetail: 'Nacional',
+        segmento:      'Lead frío',
+      },
+    });
+    console.log(`✅ Lead registrado al confirmar México | ${phone} | fila ${rowIndex}`);
+  } catch (err) {
+    console.error('Error registrando lead en México:', err.message);
+  }
+
   sessionManager.updateSession(phone, { flowState: 'asking_name' });
   return '¿Con quién tengo el gusto? 😊';
 }
@@ -269,6 +299,9 @@ async function handleAskingName(phone, message, session) {
 
   if (nombre) {
     const first = primerNombre(nombre);
+    if (session.customer?.rowIndex) {
+      sheetsService.updateOrderData(session.customer.rowIndex, { name: nombre }).catch(() => {});
+    }
     sessionManager.updateSession(phone, {
       flowState: 'active',
       tempData:  { ...session.tempData, name: nombre, nameAttempts: 0 },
@@ -323,50 +356,63 @@ async function handleActive(phone, message, session) {
     return 'Ahorita te conecto con un asesor 🙌';
   }
 
-  // Detectar CP → registrar cliente si aún no está registrado
+  // Detectar CP → actualizar registro existente o crear uno nuevo
   // Excluir números largos (teléfonos, etc.) para evitar falsos positivos
   const cpMatch = message.match(/(?<!\d)(\d{5})(?!\d)/);
   const tieneNumeroLargo = /\d{7,}/.test(message);
 
-  if (cpMatch && !tieneNumeroLargo && !session.customer?.rowIndex) {
+  if (cpMatch && !tieneNumeroLargo && !session.customer?.cp) {
     const cp = cpMatch[1];
     const isLocal = cpIsCDMX(cp) || cpIsEdomex(cp);
     const { state, city } = await sheetsService.lookupCpMX(cp);
 
-    const customerData = {
-      phone,
-      name:          session.tempData?.name || session.customer?.name || '',
-      email:         '',
-      state:         state || cpToState(cp),
-      city,
+    const updatedData = {
       cp,
-      channel:       'paqueteria',
-      channelDetail: 'Nacional',
-      segmento:      'Lead frío',
-      aceWa:         'SI',
-      entryPoint:    session.tempData?.entryPoint || 'Directo',
+      state: state || cpToState(cp),
+      city,
     };
 
-    let rowIndex = null;
-    try {
-      rowIndex = await sheetsService.registerCustomer(customerData);
-    } catch (err) {
-      console.error('Error registrando cliente:', err.message);
+    if (session.customer?.rowIndex) {
+      // Cliente ya registrado → solo actualizar CP/estado/ciudad
+      await sheetsService.updateOrderData(session.customer.rowIndex, updatedData)
+        .catch(err => console.error('Error actualizando CP:', err.message));
+      sessionManager.updateSession(phone, {
+        customer: { ...session.customer, ...updatedData },
+      });
+      session.customer = { ...session.customer, ...updatedData };
+    } else {
+      // Cliente sin registro → crear nuevo
+      const customerData = {
+        phone,
+        name:          session.tempData?.name || session.customer?.name || '',
+        email:         '',
+        ...updatedData,
+        channel:       'paqueteria',
+        channelDetail: 'Nacional',
+        segmento:      'Lead frío',
+        aceWa:         'SI',
+        entryPoint:    session.tempData?.entryPoint || 'Directo',
+      };
+      let rowIndex = null;
+      try {
+        rowIndex = await sheetsService.registerCustomer(customerData);
+      } catch (err) {
+        console.error('Error registrando cliente:', err.message);
+      }
+      const updatedCustomer = { ...customerData, rowIndex };
+      sessionManager.updateSession(phone, { customer: updatedCustomer });
+      session.customer = updatedCustomer;
     }
-
-    const updatedCustomer = { ...customerData, rowIndex };
-    sessionManager.updateSession(phone, { customer: updatedCustomer });
-    session.customer = updatedCustomer;
 
     if (isLocal) {
       const zone = cpIsCDMX(cp) ? 'CDMX' : 'Estado de México';
       sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-      await notifyWig(phone, { ...session, customer: updatedCustomer },
+      await notifyWig(phone, { ...session, customer: session.customer },
         `Zona local (${zone} / CP: ${cp})`);
-      const firstName = primerNombre(customerData.name);
+      const firstName = primerNombre(session.customer?.name || '');
       return firstName
-        ? `¡Listo, ${firstName}! 😊 En breve te contacta un asesor por este WhatsApp para ayudarte.`
-        : '¡Listo! 😊 En breve te contacta un asesor por este WhatsApp para ayudarte.';
+        ? `¡Listo, ${firstName}! 😊 En breve te contacta un asesor por este WhatsApp.`
+        : '¡Listo! 😊 En breve te contacta un asesor por este WhatsApp.';
     }
   }
 
