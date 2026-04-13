@@ -240,7 +240,7 @@ async function handleMessage(phone, messageBody) {
 
 async function handleAskingMexico(phone, message, session) {
   const origen = detectarOrigen(message);
-  if (origen !== 'Directo' && !session.tempData?.entryPoint) {
+  if (origen !== 'Directo' && (!session.tempData?.entryPoint || session.tempData.entryPoint === 'Directo')) {
     session.tempData = { ...session.tempData, entryPoint: origen };
     sessionManager.updateSession(phone, { tempData: session.tempData });
   }
@@ -385,13 +385,17 @@ async function handleActive(phone, message, session) {
     return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
   }
 
-  // Eliminar saludos dobles — Claude a veces genera saludos
-  // aunque ya se presentó antes
-  const SALUDO_PATTERNS = /^[¡!]?\s*(hola|bienvenid[oa]|buenos\s*d[ií]as|buenas\s*tardes|buenas\s*noches)[,!.\s]*/i;
-  const NOMBRE_SALUDO_PATTERNS = /^[¡!]?\s*[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+[,!.\s👋🌾😊]+\s*/;
-  response = response.replace(SALUDO_PATTERNS, '').trim();
-  if (NOMBRE_SALUDO_PATTERNS.test(response) && response.split('\n')[0].length < 30) {
-    response = response.replace(NOMBRE_SALUDO_PATTERNS, '').trim();
+  // Eliminar saludos dobles — Claude a veces genera saludos o empieza con el nombre
+  const lines = response.split('\n');
+  const firstLine = lines[0].trim();
+  const esSoloNombreOSaludo = (
+    /^[¡!]?\s*(hola|bienvenid[oa]|buenos\s*d[ií]as|buenas\s*tardes|buenas\s*noches)/i.test(firstLine) ||
+    (firstLine.length < 30 && /^[A-ZÁÉÍÓÚÑ]/.test(firstLine) &&
+     /[!👋🌾😊🐾,]\s*$/.test(firstLine))
+  );
+  if (esSoloNombreOSaludo) {
+    lines.shift();
+    response = lines.join('\n').trim();
   }
 
   // Eliminar respuestas duplicadas — cuando el debounce acumula mensajes,

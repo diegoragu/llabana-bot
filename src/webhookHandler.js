@@ -27,7 +27,15 @@ const chatLogs = new Map();
 // Debounce: { from → { timer, messages[] } }
 const pendingMessages = new Map();
 
+// Lock: evita procesamiento paralelo del mismo número
+const processingLocks = new Map();
+
 async function procesarMensaje(from, body) {
+  if (processingLocks.has(from)) {
+    console.log(`⏳ Mensaje de ${from} ignorado — procesamiento en curso`);
+    return;
+  }
+  processingLocks.set(from, true);
   try {
     if (!chatLogs.has(from)) {
       const previo = await getExistingTranscript(from);
@@ -58,6 +66,8 @@ async function procesarMensaje(from, body) {
     } catch (sendErr) {
       console.error('Error enviando mensaje de fallo:', sendErr.message);
     }
+  } finally {
+    processingLocks.delete(from);
   }
 }
 
