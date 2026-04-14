@@ -263,33 +263,46 @@ async function handleAskingMexico(phone, message, session) {
     return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor.';
   }
 
-  // México confirmado → registrar lead y pedir nombre
+  // México confirmado → registrar lead (o reusar si ya existe) y pedir nombre
   let rowIndex = null;
   try {
-    rowIndex = await sheetsService.registerCustomer({
-      phone,
-      name:          '',
-      email:         '',
-      state:         '',
-      city:          '',
-      cp:            '',
-      channel:       'paqueteria',
-      channelDetail: 'Nacional',
-      segmento:      'Lead frío',
-      aceWa:         'SI',
-      entryPoint:    session.tempData?.entryPoint || 'Directo',
-      origen:        'WhatsApp',
-    });
-    sessionManager.updateSession(phone, {
-      customer: {
+    const yaExiste = await sheetsService.findCustomer(phone);
+    if (yaExiste) {
+      rowIndex = yaExiste.rowIndex;
+      sessionManager.updateSession(phone, {
+        customer: {
+          ...yaExiste,
+          channel:       'paqueteria',
+          channelDetail: 'Nacional',
+        },
+      });
+      console.log(`🔄 Cliente ya existe, usando fila ${rowIndex}`);
+    } else {
+      rowIndex = await sheetsService.registerCustomer({
         phone,
-        rowIndex,
+        name:          '',
+        email:         '',
+        state:         '',
+        city:          '',
+        cp:            '',
         channel:       'paqueteria',
         channelDetail: 'Nacional',
         segmento:      'Lead frío',
-      },
-    });
-    console.log(`✅ Lead registrado al confirmar México | ${phone} | fila ${rowIndex}`);
+        aceWa:         'SI',
+        entryPoint:    session.tempData?.entryPoint || 'Directo',
+        origen:        'WhatsApp',
+      });
+      sessionManager.updateSession(phone, {
+        customer: {
+          phone,
+          rowIndex,
+          channel:       'paqueteria',
+          channelDetail: 'Nacional',
+          segmento:      'Lead frío',
+        },
+      });
+      console.log(`✅ Lead registrado al confirmar México | ${phone} | fila ${rowIndex}`);
+    }
   } catch (err) {
     console.error('Error registrando lead en México:', err.message);
   }
@@ -403,27 +416,40 @@ async function handleActive(phone, message, session) {
       });
       session.customer = { ...session.customer, ...updatedData };
     } else {
-      // Cliente sin registro → crear nuevo
-      const customerData = {
-        phone,
-        name:          session.tempData?.name || session.customer?.name || '',
-        email:         '',
-        ...updatedData,
-        channel:       'paqueteria',
-        channelDetail: 'Nacional',
-        segmento:      'Lead frío',
-        aceWa:         'SI',
-        entryPoint:    session.tempData?.entryPoint || 'Directo',
-      };
-      let rowIndex = null;
-      try {
-        rowIndex = await sheetsService.registerCustomer(customerData);
-      } catch (err) {
-        console.error('Error registrando cliente:', err.message);
+      // Verificar si ya existe por teléfono antes de crear nuevo
+      const existente = await sheetsService.findCustomer(phone);
+      if (existente) {
+        // Ya existe — solo actualizar CP, estado y ciudad
+        await sheetsService.updateOrderData(existente.rowIndex, updatedData)
+          .catch(err => console.error('Error actualizando CP en existente:', err.message));
+        sessionManager.updateSession(phone, {
+          customer: { ...existente, ...updatedData },
+        });
+        session.customer = { ...existente, ...updatedData };
+        console.log(`🔄 CP actualizado en registro existente | ${phone} | fila ${existente.rowIndex}`);
+      } else {
+        // No existe — crear nuevo
+        const customerData = {
+          phone,
+          name:          session.tempData?.name || session.customer?.name || '',
+          email:         '',
+          ...updatedData,
+          channel:       'paqueteria',
+          channelDetail: 'Nacional',
+          segmento:      'Lead frío',
+          aceWa:         'SI',
+          entryPoint:    session.tempData?.entryPoint || 'Directo',
+        };
+        let rowIndex = null;
+        try {
+          rowIndex = await sheetsService.registerCustomer(customerData);
+        } catch (err) {
+          console.error('Error registrando cliente:', err.message);
+        }
+        const updatedCustomer = { ...customerData, rowIndex };
+        sessionManager.updateSession(phone, { customer: updatedCustomer });
+        session.customer = updatedCustomer;
       }
-      const updatedCustomer = { ...customerData, rowIndex };
-      sessionManager.updateSession(phone, { customer: updatedCustomer });
-      session.customer = updatedCustomer;
     }
 
     if (isLocal) {
