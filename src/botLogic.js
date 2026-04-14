@@ -88,8 +88,8 @@ const ENTRY_POINT_MAP = {
   'me podrian dar mas informacion':       'Llabana.com Header',
   'quiero mas informes':                  'Llabana.com Chatbot',
   'vi un producto que me interesa':       'Llabana.com Producto',
-  'vi un producto en su tienda en linea': 'Tienda Producto',
-  'me mandaron aqui desde la tienda':     'Tienda Chatbot',
+  'vi un producto en su tienda en linea': 'llabanaenlinea.com Producto',
+  'me mandaron aqui desde la tienda':     'llabanaenlinea.com Chatbot',
   'los vi en facebook':                   'Facebook',
 };
 
