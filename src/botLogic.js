@@ -239,12 +239,6 @@ async function handleMessage(phone, messageBody) {
 // ── Filtro México ─────────────────────────────────────────────────────────────
 
 async function handleAskingMexico(phone, message, session) {
-  const origen = detectarOrigen(message);
-  if (origen !== 'Directo' && (!session.tempData?.entryPoint || session.tempData.entryPoint === 'Directo')) {
-    session.tempData = { ...session.tempData, entryPoint: origen };
-    sessionManager.updateSession(phone, { tempData: session.tempData });
-  }
-
   if (isOutsideMexico(message)) {
     sessionManager.deleteSession(phone);
     return OUT_OF_COVERAGE_MSG;
@@ -252,7 +246,11 @@ async function handleAskingMexico(phone, message, session) {
 
   if (!phone.startsWith('whatsapp:+52')) {
     sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-    await notifyWig(phone, session, `Número no mexicano: ${phone}`);
+    // Solo notificar si viene de un link de tracking (cliente real interesado)
+    // Números extranjeros que llegan directo generalmente son spam o error
+    if (session.tempData?.entryPoint && session.tempData.entryPoint !== 'Directo') {
+      await notifyWig(phone, session, `Número extranjero via ${session.tempData.entryPoint}: ${phone}`);
+    }
     return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor.';
   }
 
@@ -436,13 +434,18 @@ async function handleActive(phone, message, session) {
   const firstLine = lines[0].trim();
   const esSoloNombreOSaludo = (
     /^[¡!]?\s*(hola|bienvenid[oa]|buenos\s*d[ií]as|buenas\s*tardes|buenas\s*noches)/i.test(firstLine) ||
-    (firstLine.length < 30 && /^[A-ZÁÉÍÓÚÑ]/.test(firstLine) &&
-     /[!👋🌾😊🐾,]\s*$/.test(firstLine))
+    (firstLine.length < 35 && /^[A-ZÁÉÍÓÚÑ]/.test(firstLine) &&
+     /[!,👋🌾😊🐾]\s*$/.test(firstLine))
   );
   if (esSoloNombreOSaludo) {
     lines.shift();
     response = lines.join('\n').trim();
   }
+  if (!response) response = '¿En qué te puedo ayudar? 😊';
+
+  // Normalizar formato para WhatsApp
+  response = response.replace(/\*\*([^*]+)\*\*/g, '*$1*');
+  response = response.replace(/^---+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
 
   // Eliminar respuestas duplicadas — cuando el debounce acumula mensajes,
   // Claude puede generar dos párrafos que responden lo mismo

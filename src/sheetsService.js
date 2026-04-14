@@ -150,6 +150,7 @@ function formatPhoneForStorage(phone) {
 function limpiarNombre(nombre) {
   if (!nombre) return '';
   let n = nombre.trim();
+  n = n.replace(/[,.\s]+$/, '').trim();
   if (!n) return '';
 
   // Demasiado largo para ser un nombre
