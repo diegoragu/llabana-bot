@@ -300,7 +300,25 @@ async function handleAskingMexico(phone, message, session) {
 
 // ── Nombre ────────────────────────────────────────────────────────────────────
 
+const RESPUESTA_FLUJO = /^(s[ií],?|no,?|ok,?|claro,?|desde\s+\w+|estoy\s+en|soy\s+de|vengo\s+de)/i;
+
 async function handleAskingName(phone, message, session) {
+  // Filtrar respuestas de contexto que no son nombres ("Sí", "Ok", "Soy de Puebla", etc.)
+  if (RESPUESTA_FLUJO.test(message.trim())) {
+    const partes = message.split(/,\s*/);
+    if (partes.length > 1) {
+      const posibleNombre = sheetsService.limpiarNombre(partes[partes.length - 1]);
+      if (posibleNombre) {
+        // Hay nombre después de la coma ("Sí, Juan") — usarlo
+        message = partes[partes.length - 1];
+      } else {
+        return '¿Me dices tu nombre? 😊';
+      }
+    } else {
+      return '¿Me dices tu nombre? 😊';
+    }
+  }
+
   const nombre = sheetsService.limpiarNombre(message);
   const attempts = session.tempData?.nameAttempts ?? 0;
 
@@ -423,6 +441,23 @@ async function handleActive(phone, message, session) {
       return firstName
         ? `¡Listo, ${firstName}! 😊 En breve te contacta un asesor por este WhatsApp.`
         : '¡Listo! 😊 En breve te contacta un asesor por este WhatsApp.';
+    }
+  }
+
+  // Detectar nombre cuando aún no lo tenemos y el cliente lo menciona al inicio
+  if (!session.customer?.name && !session.tempData?.name) {
+    const nombreMatch = message.match(/^([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)\s*[,.\s]/);
+    if (nombreMatch) {
+      const posibleNombre = sheetsService.limpiarNombre(nombreMatch[1]);
+      if (posibleNombre && posibleNombre.split(' ').length >= 2) {
+        session.tempData = { ...session.tempData, name: posibleNombre };
+        sessionManager.updateSession(phone, { tempData: session.tempData });
+        if (session.customer?.rowIndex) {
+          sheetsService.updateOrderData(session.customer.rowIndex,
+            { name: posibleNombre }).catch(() => {});
+        }
+        console.log(`👤 Nombre detectado en active: ${posibleNombre}`);
+      }
     }
   }
 
