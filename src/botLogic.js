@@ -154,7 +154,13 @@ function capitalize(str) {
 }
 
 function primerNombre(nombre) {
-  return (nombre || '').split(' ')[0] || '';
+  const ARTICULOS = /^(el|la|los|las|don|doña|sr|sra)$/i;
+  const palabras = (nombre || '').split(/\s+/).filter(Boolean);
+  // Si la primera palabra es un artículo o tratamiento, tomar la siguiente
+  if (palabras.length > 1 && ARTICULOS.test(palabras[0])) {
+    return palabras[1];
+  }
+  return palabras[0] || '';
 }
 
 // ── Punto de entrada ──────────────────────────────────────────────────────────
