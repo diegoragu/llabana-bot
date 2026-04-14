@@ -229,7 +229,8 @@ async function handleMessage(phone, messageBody) {
     case 'active':           return handleActive(phone, messageBody, session);
     case 'waiting_for_wig':  return handleWaitingForWig(phone, messageBody, session);
     case 'escalated':        return handleEscalated(phone, messageBody, session);
-    case 'confirming_reset': return handleConfirmingReset(phone, messageBody, session);
+    case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
+    case 'confirming_escalation':   return handleConfirmingEscalation(phone, messageBody, session);
     default:
       sessionManager.deleteSession(phone);
       return 'Algo salió mal. Escríbeme de nuevo.';
@@ -249,7 +250,9 @@ async function handleAskingMexico(phone, message, session) {
     // Solo notificar si viene de un link de tracking (cliente real interesado)
     // Números extranjeros que llegan directo generalmente son spam o error
     if (session.tempData?.entryPoint && session.tempData.entryPoint !== 'Directo') {
-      await notifyWig(phone, session, `Número extranjero via ${session.tempData.entryPoint}: ${phone}`);
+      await notifyWig(phone, session,
+        `Número extranjero via ${session.tempData.entryPoint}: ${phone}`,
+        'Cliente con número extranjero');
     }
     return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor.';
   }
@@ -342,16 +345,13 @@ async function handleActive(phone, message, session) {
 
   // Solicitud de asesor humano
   if (isRequestingHuman(message)) {
-    await notifyWig(phone, session, 'Cliente solicita hablar con un asesor');
-    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-    return 'Ahorita te conecto con un asesor 🙌';
+    return escalateWithResumen(phone, session, 'Cliente solicita asesor humano');
   }
 
   // Escalación por perfil (mayoreo, negocio, etc.)
   if (isEscalationProfile(message)) {
-    await notifyWig(phone, session, `Perfil mayoreo/negocio: "${message.substring(0, 80)}"`);
-    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-    return 'Ahorita te conecto con un asesor 🙌';
+    return escalateWithResumen(phone, session,
+      `Perfil mayoreo/negocio: "${message.substring(0, 80)}"`);
   }
 
   // Detectar CP → actualizar registro existente o crear uno nuevo
@@ -406,7 +406,13 @@ async function handleActive(phone, message, session) {
       const zone = cpIsCDMX(cp) ? 'CDMX' : 'Estado de México';
       sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
       await notifyWig(phone, { ...session, customer: session.customer },
-        `Zona local (${zone} / CP: ${cp})`);
+        `Zona local (${zone} / CP: ${cp})`,
+        `Cliente de ${zone} requiere atención personalizada`);
+      if (session.customer?.rowIndex) {
+        sheetsService.updateOrderData(session.customer.rowIndex, {
+          notas: `Cliente de ${zone} — atención por asesor`,
+        }).catch(() => {});
+      }
       const firstName = primerNombre(session.customer?.name || '');
       return firstName
         ? `¡Listo, ${firstName}! 😊 En breve te contacta un asesor por este WhatsApp.`
@@ -461,9 +467,7 @@ async function handleActive(phone, message, session) {
   if (!response) response = '¿En qué te puedo ayudar? 😊';
 
   if (response.includes('ESCALAR_A_WIG')) {
-    await notifyWig(phone, session, 'Detectado por Claude: queja o situación especial');
-    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-    return 'Ahorita te conecto con un asesor 🙌';
+    return escalateWithResumen(phone, session, 'Detectado por Claude');
   }
 
   session.conversationHistory.push({ role: 'assistant', content: response });
@@ -544,9 +548,98 @@ async function handleEscalated(phone, message, session) {
   return response + '\n\n_(Un asesor también te contactará en breve)_';
 }
 
+// ── Resumen y escalación con confirmación ─────────────────────────────────────
+
+async function generateResumen(conversationHistory, customer) {
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const historial = (conversationHistory || []).slice(-10)
+      .map(m => `${m.role === 'user' ? 'Cliente' : 'Bot'}: ${m.content}`)
+      .join('\n');
+
+    const response = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 150,
+      messages: [{
+        role: 'user',
+        content: `Basándote en esta conversación, genera UN resumen corto (máximo 2 líneas) ` +
+          `de lo que necesita el cliente. Empieza con "Cliente necesita..." o "Cliente quiere...".\n` +
+          `Solo el resumen, sin explicaciones adicionales.\n\nConversación:\n${historial}`,
+      }],
+    });
+    return response.content[0].text.trim();
+  } catch (err) {
+    console.error('Error generando resumen:', err.message);
+    return 'Cliente requiere atención de un asesor';
+  }
+}
+
+async function escalateWithResumen(phone, session, motivo) {
+  const resumen = await generateResumen(
+    session.conversationHistory || [],
+    session.customer
+  );
+
+  session.tempData = {
+    ...session.tempData,
+    resumenEscalacion: resumen,
+    motivoEscalacion:  motivo,
+  };
+  sessionManager.updateSession(phone, {
+    flowState: 'confirming_escalation',
+    tempData:  session.tempData,
+  });
+
+  return `Antes de conectarte con un asesor, déjame confirmar tu solicitud:\n\n"${resumen}"\n\n¿Es correcto? 😊`;
+}
+
+const CONFIRMA_PATTERNS = /^(s[ií]|correcto|exacto|así es|eso es|ok|dale|sí eso|claro|perfecto|confirmo)$/i;
+const CORRIGE_PATTERNS  = /^(no|no es|no exactamente|espera|corrige|falta|también|además)/i;
+
+async function handleConfirmingEscalation(phone, message, session) {
+  const resumen = session.tempData?.resumenEscalacion || 'Cliente requiere atención de un asesor';
+  const motivo  = session.tempData?.motivoEscalacion  || '';
+
+  if (CONFIRMA_PATTERNS.test(message.trim())) {
+    await notifyWig(phone, session, motivo, resumen);
+
+    if (session.customer?.rowIndex) {
+      sheetsService.updateOrderData(session.customer.rowIndex, {
+        notas: resumen,
+      }).catch(() => {});
+    }
+
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    const firstName = primerNombre(session.customer?.name || session.tempData?.name || '');
+    return firstName
+      ? `¡Listo, ${firstName}! 🙌 Un asesor te contactará en breve.`
+      : '¡Listo! 🙌 Un asesor te contactará en breve.';
+  }
+
+  if (CORRIGE_PATTERNS.test(message.trim())) {
+    sessionManager.updateSession(phone, {
+      flowState: 'confirming_escalation',
+      tempData:  { ...session.tempData, esperandoCorreccion: true },
+    });
+    return '¿Cómo lo describirías tú? Cuéntame en tus palabras 😊';
+  }
+
+  if (session.tempData?.esperandoCorreccion) {
+    const nuevaDescripcion = message.trim();
+    session.tempData.resumenEscalacion  = nuevaDescripcion;
+    session.tempData.esperandoCorreccion = false;
+    sessionManager.updateSession(phone, { tempData: session.tempData });
+    return `Perfecto, queda así:\n\n"${nuevaDescripcion}"\n\n¿Lo confirmas? 😊`;
+  }
+
+  return `Tu solicitud quedó como:\n\n"${resumen}"\n\n¿Está bien así o quieres cambiar algo?`;
+}
+
 // ── Notificación a asesor ─────────────────────────────────────────────────────
 
-async function notifyWig(phone, session, motivo = '') {
+async function notifyWig(phone, session, motivo = '', resumen = '') {
   const wigNumber = process.env.WIG_WHATSAPP_NUMBER;
   if (!wigNumber) {
     console.warn('WIG_WHATSAPP_NUMBER no configurado.');
@@ -561,14 +654,13 @@ async function notifyWig(phone, session, motivo = '') {
     : '(sin historial previo)';
 
   const msg =
-    `🚨 *ESCALACIÓN*\n\n` +
-    `📱 Tel:      ${phone}\n` +
-    `👤 Nombre:   ${customer.name || tempData.name || 'N/D'}\n` +
-    `📍 Estado:   ${customer.state || tempData.state || 'N/D'}\n` +
-    `🏙️ Ciudad:  ${customer.city  || tempData.city  || 'N/D'}\n` +
-    `💬 Consulta: ${tempData.intent || customer.segmento || 'N/D'}\n` +
-    `📌 Motivo:   ${motivo}\n\n` +
-    `*Conversación:*\n${transcript}`;
+    `🚨 *NUEVA SOLICITUD*\n\n` +
+    `👤 *${customer.name || tempData.name || 'Sin nombre'}*\n` +
+    `📱 ${phone.replace('whatsapp:', '')}\n` +
+    `📍 ${customer.city || tempData.city || 'N/D'}${customer.state ? ', ' + customer.state : ''}\n\n` +
+    `📋 *Solicitud:* ${resumen || motivo}\n\n` +
+    `📌 *Motivo:* ${motivo}\n\n` +
+    `*Conversación reciente:*\n${transcript}`;
 
   console.log(`📤 Intentando notificar a Wig | to: ${wigNumber} | motivo: ${motivo}`);
   try {
