@@ -380,6 +380,11 @@ async function handleActive(phone, message, session) {
     return '¿Quieres empezar una nueva consulta o seguimos con lo que teníamos? 😊';
   }
 
+  // Agregar mensaje al historial ANTES de cualquier escalación
+  // (para que generateResumen incluya el mensaje que disparó la escalación)
+  session.conversationHistory.push({ role: 'user', content: message });
+  sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+
   // Solicitud de asesor humano
   if (isRequestingHuman(message)) {
     return escalateWithResumen(phone, session, 'Cliente solicita asesor humano');
@@ -488,7 +493,7 @@ async function handleActive(phone, message, session) {
   }
 
   // Conversación con Claude
-  session.conversationHistory.push({ role: 'user', content: message });
+  // (el mensaje ya fue agregado al historial antes de los checks de escalación)
 
   let response;
   try {
@@ -628,15 +633,22 @@ async function generateResumen(conversationHistory, customer) {
 
     const response = await client.messages.create({
       model:      'claude-sonnet-4-6',
-      max_tokens: 150,
+      max_tokens: 80,
       messages: [{
         role: 'user',
-        content: `Basándote en esta conversación, genera UN resumen corto (máximo 2 líneas) ` +
-          `de lo que necesita el cliente. Empieza con "Cliente necesita..." o "Cliente quiere...".\n` +
-          `Solo el resumen, sin explicaciones adicionales.\n\nConversación:\n${historial}`,
+        content: `Eres un asistente que resume conversaciones de WhatsApp.\n\n` +
+          `Basándote en esta conversación entre un cliente y el bot de Llabana, ` +
+          `escribe UN resumen de máximo 15 palabras de lo que necesita el cliente.\n` +
+          `Empieza con "Cliente quiere..." o "Cliente necesita...".\n` +
+          `Responde SOLO con el resumen, sin explicaciones, sin comillas, sin puntos al final.\n\n` +
+          `Conversación:\n${historial}\n\nResumen:`,
       }],
     });
-    return response.content[0].text.trim();
+    const texto = response.content[0].text.trim()
+      .replace(/^["']|["']$/g, '')
+      .replace(/\.$/, '')
+      .substring(0, 100);
+    return texto || 'Cliente requiere atención de un asesor';
   } catch (err) {
     console.error('Error generando resumen:', err.message);
     return 'Cliente requiere atención de un asesor';
@@ -662,7 +674,7 @@ async function escalateWithResumen(phone, session, motivo) {
   return `Antes de conectarte con un asesor, déjame confirmar tu solicitud:\n\n"${resumen}"\n\n¿Es correcto? 😊`;
 }
 
-const CONFIRMA_PATTERNS = /^(s[ií]|correcto|exacto|así es|eso es|ok|dale|sí eso|claro|perfecto|confirmo)$/i;
+const CONFIRMA_PATTERNS = /^(s[ií]|correcto|exacto|as[ií]\s*es|eso\s*es|ok|dale|claro|perfecto|confirmo|est[aá]\s*bien|bien\s*as[ií]|as[ií]\s*est[aá]|de\s*acuerdo|va|listo|si\s*as[ií])$/i;
 const CORRIGE_PATTERNS  = /^(no|no es|no exactamente|espera|corrige|falta|también|además)/i;
 
 async function handleConfirmingEscalation(phone, message, session) {
