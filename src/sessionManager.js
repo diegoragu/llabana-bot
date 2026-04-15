@@ -1,70 +1,133 @@
 /**
- * Gestión de sesiones en memoria.
- * Cada sesión almacena el estado de la conversación por número de teléfono.
- * Las sesiones expiran después de SESSION_TIMEOUT_MS de inactividad.
+ * Gestión de sesiones con Redis (persistente) y fallback a memoria.
+ * Las sesiones sobreviven reinicios de servidor cuando REDIS_URL está configurado.
  */
 
-const sessions = new Map();
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
+const Redis = require('ioredis');
 
-/**
- * Obtiene la sesión activa de un número de teléfono.
- * Retorna null si no existe o si expiró.
- */
-function getSession(phone) {
-  const session = sessions.get(phone);
-  if (!session) return null;
+// Conectar a Redis si está disponible, sino usar memoria como fallback
+let redis = null;
+if (process.env.REDIS_URL) {
+  redis = new Redis(process.env.REDIS_URL);
+  redis.on('connect', () => console.log('✅ Redis conectado'));
+  redis.on('error', (err) => console.error('❌ Redis error:', err.message));
+} else {
+  console.warn('⚠️  REDIS_URL no configurado — usando sesiones en memoria');
+}
 
-  if (Date.now() - session.lastActivity > SESSION_TIMEOUT_MS) {
-    sessions.delete(phone);
+const SESSION_TIMEOUT_MS  = 30 * 60 * 1000; // 30 minutos
+const SESSION_TTL_SECONDS = 30 * 60;         // mismo valor para Redis TTL
+
+// Fallback en memoria si no hay Redis
+const memorySessions = new Map();
+
+// ── Serialización ──────────────────────────────────────────────────────────────
+
+function serialize(session) {
+  return JSON.stringify(session);
+}
+
+function deserialize(data) {
+  if (!data) return null;
+  try {
+    return JSON.parse(data);
+  } catch {
     return null;
   }
+}
 
+// ── API pública ────────────────────────────────────────────────────────────────
+
+async function getSession(phone) {
+  if (redis) {
+    try {
+      const data = await redis.get(`session:${phone}`);
+      const session = deserialize(data);
+      if (!session) return null;
+      // Renovar TTL con cada acceso
+      await redis.expire(`session:${phone}`, SESSION_TTL_SECONDS);
+      return session;
+    } catch (err) {
+      console.error('Redis getSession error:', err.message);
+      // Fallback a memoria
+    }
+  }
+
+  const session = memorySessions.get(phone);
+  if (!session) return null;
+  if (Date.now() - session.lastActivity > SESSION_TIMEOUT_MS) {
+    memorySessions.delete(phone);
+    return null;
+  }
   session.lastActivity = Date.now();
   return session;
 }
 
-/**
- * Crea una nueva sesión para un número de teléfono.
- * flowState posibles:
- *   'new'           → cliente recién detectado (aún sin verificar en Sheets)
- *   'asking_name'   → esperando nombre
- *   'asking_state'  → esperando estado
- *   'asking_city'   → esperando ciudad
- *   'asking_colonia'→ esperando colonia
- *   'active'        → cliente registrado, conversación libre con Claude
- *   'escalated'     → derivado a Wig
- */
-function createSession(phone) {
+async function createSession(phone) {
   const session = {
     phone,
-    flowState: 'new',
-    tempData: {},       // datos temporales durante el onboarding
-    customer: null,     // datos del cliente una vez registrado/encontrado
-    conversationHistory: [], // historial para Claude
-    lastActivity: Date.now(),
+    flowState:           'new',
+    tempData:            {},
+    customer:            null,
+    conversationHistory: [],
+    lastActivity:        Date.now(),
   };
-  sessions.set(phone, session);
+
+  if (redis) {
+    try {
+      await redis.setex(`session:${phone}`, SESSION_TTL_SECONDS, serialize(session));
+      return session;
+    } catch (err) {
+      console.error('Redis createSession error:', err.message);
+    }
+  }
+
+  memorySessions.set(phone, session);
   return session;
 }
 
-/**
- * Actualiza campos de una sesión existente.
- */
-function updateSession(phone, updates) {
-  const session = sessions.get(phone);
+async function updateSession(phone, updates) {
+  if (redis) {
+    try {
+      const data = await redis.get(`session:${phone}`);
+      const session = deserialize(data);
+      if (!session) return null;
+      const updated = { ...session, ...updates, lastActivity: Date.now() };
+      await redis.setex(`session:${phone}`, SESSION_TTL_SECONDS, serialize(updated));
+      return updated;
+    } catch (err) {
+      console.error('Redis updateSession error:', err.message);
+    }
+  }
+
+  const session = memorySessions.get(phone);
   if (!session) return null;
   Object.assign(session, updates, { lastActivity: Date.now() });
   return session;
 }
 
-function deleteSession(phone) {
-  sessions.delete(phone);
+async function deleteSession(phone) {
+  if (redis) {
+    try {
+      await redis.del(`session:${phone}`);
+      return;
+    } catch (err) {
+      console.error('Redis deleteSession error:', err.message);
+    }
+  }
+  memorySessions.delete(phone);
 }
 
-/** Retorna cuántas sesiones activas hay (útil para monitoreo) */
-function getActiveSessionCount() {
-  return sessions.size;
+async function getActiveSessionCount() {
+  if (redis) {
+    try {
+      const keys = await redis.keys('session:*');
+      return keys.length;
+    } catch {
+      return 0;
+    }
+  }
+  return memorySessions.size;
 }
 
 module.exports = { getSession, createSession, updateSession, deleteSession, getActiveSessionCount };

@@ -168,10 +168,10 @@ function primerNombre(nombre) {
 async function handleMessage(phone, messageBody) {
   // Reset manual
   if (RESET_PATTERNS.test(messageBody.trim())) {
-    sessionManager.deleteSession(phone);
+    await sessionManager.deleteSession(phone);
   }
 
-  let session = sessionManager.getSession(phone);
+  let session = await sessionManager.getSession(phone);
 
   // Detectar origen en sesión activa
   if (session) {
@@ -179,7 +179,7 @@ async function handleMessage(phone, messageBody) {
     if (origenNuevo !== 'Directo' &&
         (!session.tempData?.entryPoint || session.tempData.entryPoint === 'Directo')) {
       session.tempData = { ...session.tempData, entryPoint: origenNuevo };
-      sessionManager.updateSession(phone, { tempData: session.tempData });
+      await sessionManager.updateSession(phone, { tempData: session.tempData });
       if (session.customer?.rowIndex) {
         sheetsService.updateOrderData(session.customer.rowIndex,
           { entryPoint: origenNuevo }).catch(() => {});
@@ -191,9 +191,9 @@ async function handleMessage(phone, messageBody) {
   // Sesión nueva
   if (!session) {
     const entryPoint = detectarOrigen(messageBody);
-    session = sessionManager.createSession(phone);
+    session = await sessionManager.createSession(phone);
     session.tempData = { entryPoint };
-    sessionManager.updateSession(phone, { tempData: session.tempData });
+    await sessionManager.updateSession(phone, { tempData: session.tempData });
 
     const customer = await sheetsService.findCustomer(phone);
 
@@ -220,7 +220,7 @@ async function handleMessage(phone, messageBody) {
       const pendiente = notas.match(/PENDIENTE_ESCALACION: (.+)/);
       if (pendiente) {
         const resumenGuardado = pendiente[1];
-        sessionManager.updateSession(phone, {
+        await sessionManager.updateSession(phone, {
           flowState: 'confirming_escalation',
           customer:  customerData,
           tempData:  {
@@ -234,22 +234,22 @@ async function handleMessage(phone, messageBody) {
 
       const nombre = primerNombre(customer.name);
       if (!nombre) {
-        sessionManager.updateSession(phone, {
+        await sessionManager.updateSession(phone, {
           flowState: 'asking_name',
           customer:  customerData,
         });
         return '¡Hola! 👋 ¿Con quién tengo el gusto?';
       }
       // Cliente existente con nombre → procesar primer mensaje con Claude
-      sessionManager.updateSession(phone, {
+      await sessionManager.updateSession(phone, {
         flowState: 'active',
         customer:  customerData,
       });
-      return handleActive(phone, messageBody, sessionManager.getSession(phone));
+      return handleActive(phone, messageBody, await sessionManager.getSession(phone));
     }
 
     // Cliente nuevo → filtro México
-    sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
+    await sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
     return pick(WELCOME_VARIANTS);
   }
 
@@ -263,7 +263,7 @@ async function handleMessage(phone, messageBody) {
     case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
     case 'confirming_escalation':   return handleConfirmingEscalation(phone, messageBody, session);
     default:
-      sessionManager.deleteSession(phone);
+      await sessionManager.deleteSession(phone);
       return 'Algo salió mal. Escríbeme de nuevo.';
   }
 }
@@ -276,12 +276,12 @@ const registrandoTelefonos = new Set();
 
 async function handleAskingMexico(phone, message, session) {
   if (isOutsideMexico(message)) {
-    sessionManager.deleteSession(phone);
+    await sessionManager.deleteSession(phone);
     return OUT_OF_COVERAGE_MSG;
   }
 
   if (!phone.startsWith('whatsapp:+52')) {
-    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
     // Solo notificar si viene de un link de tracking (cliente real interesado)
     // Números extranjeros que llegan directo generalmente son spam o error
     if (session.tempData?.entryPoint && session.tempData.entryPoint !== 'Directo') {
@@ -298,7 +298,7 @@ async function handleAskingMexico(phone, message, session) {
     const yaExiste = await sheetsService.findCustomer(phone);
     if (yaExiste) {
       rowIndex = yaExiste.rowIndex;
-      sessionManager.updateSession(phone, {
+      await sessionManager.updateSession(phone, {
         customer: {
           ...yaExiste,
           channel:       'paqueteria',
@@ -314,10 +314,10 @@ async function handleAskingMexico(phone, message, session) {
         const yaRegistrado = await sheetsService.findCustomer(phone);
         if (yaRegistrado) {
           rowIndex = yaRegistrado.rowIndex;
-          sessionManager.updateSession(phone, {
+          await sessionManager.updateSession(phone, {
             customer: { ...yaRegistrado, channel: 'paqueteria', channelDetail: 'Nacional' },
           });
-          sessionManager.updateSession(phone, { flowState: 'asking_name' });
+          await sessionManager.updateSession(phone, { flowState: 'asking_name' });
           return '¿Con quién tengo el gusto? 😊';
         }
       }
@@ -337,7 +337,7 @@ async function handleAskingMexico(phone, message, session) {
           entryPoint:    session.tempData?.entryPoint || 'Directo',
           origen:        'WhatsApp',
         });
-        sessionManager.updateSession(phone, {
+        await sessionManager.updateSession(phone, {
           customer: {
             phone,
             rowIndex,
@@ -355,7 +355,7 @@ async function handleAskingMexico(phone, message, session) {
     console.error('Error registrando lead en México:', err.message);
   }
 
-  sessionManager.updateSession(phone, { flowState: 'asking_name' });
+  await sessionManager.updateSession(phone, { flowState: 'asking_name' });
   return '¿Con quién tengo el gusto? 😊';
 }
 
@@ -370,11 +370,11 @@ async function handleAskingName(phone, message, session) {
   if (NO_ES_NOMBRE.test(message.trim())) {
     const attempts = session.tempData?.nameAttempts ?? 0;
     if (attempts < 2) {
-      sessionManager.updateSession(phone, {
+      await sessionManager.updateSession(phone, {
         tempData: { ...session.tempData, nameAttempts: attempts + 1 },
       });
     } else {
-      sessionManager.updateSession(phone, { flowState: 'active' });
+      await sessionManager.updateSession(phone, { flowState: 'active' });
     }
     return '¿Me dices tu nombre? Por ejemplo: Juan o María 😊';
   }
@@ -403,7 +403,7 @@ async function handleAskingName(phone, message, session) {
     if (session.customer?.rowIndex) {
       sheetsService.updateOrderData(session.customer.rowIndex, { name: nombre }).catch(() => {});
     }
-    sessionManager.updateSession(phone, {
+    await sessionManager.updateSession(phone, {
       flowState: 'active',
       tempData:  { ...session.tempData, name: nombre, nameAttempts: 0 },
       customer:  { ...session.customer, name: nombre },
@@ -417,14 +417,14 @@ async function handleAskingName(phone, message, session) {
 
   // Nombre inválido
   if (attempts < 2) {
-    sessionManager.updateSession(phone, {
+    await sessionManager.updateSession(phone, {
       tempData: { ...session.tempData, nameAttempts: attempts + 1 },
     });
     return '¿Me dices tu nombre? Por ejemplo: Juan o María 😊';
   }
 
   // Agotó intentos → continuar sin nombre
-  sessionManager.updateSession(phone, { flowState: 'active' });
+  await sessionManager.updateSession(phone, { flowState: 'active' });
   return '¿En qué te puedo ayudar? 😊';
 }
 
@@ -436,7 +436,7 @@ async function handleActive(phone, message, session) {
   // "hola" con cliente activo → confirmar si quiere nueva consulta
   if (/^hola$/i.test(message.trim()) && session.customer) {
     session.tempData = { ...session.tempData, _prevState: 'active' };
-    sessionManager.updateSession(phone, {
+    await sessionManager.updateSession(phone, {
       flowState: 'confirming_reset',
       tempData:  session.tempData,
     });
@@ -446,7 +446,7 @@ async function handleActive(phone, message, session) {
   // Agregar mensaje al historial ANTES de cualquier escalación
   // (para que generateResumen incluya el mensaje que disparó la escalación)
   session.conversationHistory.push({ role: 'user', content: message });
-  sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+  await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
 
   // Solicitud de asesor humano
   if (isRequestingHuman(message)) {
@@ -479,7 +479,7 @@ async function handleActive(phone, message, session) {
       // Cliente ya registrado → solo actualizar CP/estado/ciudad
       await sheetsService.updateOrderData(session.customer.rowIndex, updatedData)
         .catch(err => console.error('Error actualizando CP:', err.message));
-      sessionManager.updateSession(phone, {
+      await sessionManager.updateSession(phone, {
         customer: { ...session.customer, ...updatedData },
       });
       session.customer = { ...session.customer, ...updatedData };
@@ -490,7 +490,7 @@ async function handleActive(phone, message, session) {
         // Ya existe — solo actualizar CP, estado y ciudad
         await sheetsService.updateOrderData(existente.rowIndex, updatedData)
           .catch(err => console.error('Error actualizando CP en existente:', err.message));
-        sessionManager.updateSession(phone, {
+        await sessionManager.updateSession(phone, {
           customer: { ...existente, ...updatedData },
         });
         session.customer = { ...existente, ...updatedData };
@@ -515,14 +515,14 @@ async function handleActive(phone, message, session) {
           console.error('Error registrando cliente:', err.message);
         }
         const updatedCustomer = { ...customerData, rowIndex };
-        sessionManager.updateSession(phone, { customer: updatedCustomer });
+        await sessionManager.updateSession(phone, { customer: updatedCustomer });
         session.customer = updatedCustomer;
       }
     }
 
     if (isLocal) {
       const zone = cpIsCDMX(cp) ? 'CDMX' : 'Estado de México';
-      sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+      await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
       await notifyWig(phone, { ...session, customer: session.customer },
         `Zona local (${zone} / CP: ${cp})`,
         `Cliente de ${zone} requiere atención personalizada`);
@@ -545,7 +545,7 @@ async function handleActive(phone, message, session) {
       const posibleNombre = sheetsService.limpiarNombre(nombreMatch[1]);
       if (posibleNombre && posibleNombre.split(' ').length >= 2) {
         session.tempData = { ...session.tempData, name: posibleNombre };
-        sessionManager.updateSession(phone, { tempData: session.tempData });
+        await sessionManager.updateSession(phone, { tempData: session.tempData });
         if (session.customer?.rowIndex) {
           sheetsService.updateOrderData(session.customer.rowIndex,
             { name: posibleNombre }).catch(() => {});
@@ -606,7 +606,7 @@ async function handleActive(phone, message, session) {
   }
 
   session.conversationHistory.push({ role: 'assistant', content: response });
-  sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+  await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
   sheetsService.appendConversationLog(phone, message, response).catch(() => {});
 
   return response;
@@ -618,16 +618,16 @@ const CONFIRM_RESET_PATTERNS = /^(s[ií]|empezar|nueva|nuevo|de\s*nuevo|empezar\
 
 async function handleConfirmingReset(phone, message, session) {
   if (CONFIRM_RESET_PATTERNS.test(message.trim())) {
-    sessionManager.deleteSession(phone);
-    sessionManager.createSession(phone);
-    sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
+    await sessionManager.deleteSession(phone);
+    await sessionManager.createSession(phone);
+    await sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
     return pick(WELCOME_VARIANTS);
   }
 
   // Continuar con el estado anterior
   const prevState = session.tempData?._prevState || 'active';
-  sessionManager.updateSession(phone, { flowState: prevState });
-  const restored = sessionManager.getSession(phone);
+  await sessionManager.updateSession(phone, { flowState: prevState });
+  const restored = await sessionManager.getSession(phone);
 
   switch (prevState) {
     case 'asking_mexico': return handleAskingMexico(phone, message, restored);
@@ -639,7 +639,7 @@ async function handleConfirmingReset(phone, message, session) {
 
 async function handleWaitingForWig(phone, message, session) {
   if (DESPEDIDA_PATTERNS.test(message.trim())) {
-    sessionManager.updateSession(phone, { flowState: 'escalated' });
+    await sessionManager.updateSession(phone, { flowState: 'escalated' });
     return '¡Con gusto! En breve te contacta un asesor 🙌 Que tengas buen día 🌾';
   }
 
@@ -656,7 +656,7 @@ async function handleWaitingForWig(phone, message, session) {
       return 'En breve te contacta un asesor 🙌';
     }
     session.conversationHistory.push({ role: 'assistant', content: response });
-    sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+    await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
     return response;
   }
 
@@ -679,7 +679,7 @@ async function handleEscalated(phone, message, session) {
     return 'En breve te contacta un asesor 🙌';
   }
   session.conversationHistory.push({ role: 'assistant', content: response });
-  sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+  await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
   return response + '\n\n_(Un asesor también te contactará en breve)_';
 }
 
@@ -738,7 +738,7 @@ async function escalateWithResumen(phone, session, motivo) {
     resumenEscalacion: resumen,
     motivoEscalacion:  motivo,
   };
-  sessionManager.updateSession(phone, {
+  await sessionManager.updateSession(phone, {
     flowState: 'confirming_escalation',
     tempData:  session.tempData,
   });
@@ -762,7 +762,7 @@ async function handleConfirmingEscalation(phone, message, session) {
       }).catch(() => {});
     }
 
-    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
     const firstName = primerNombre(session.customer?.name || session.tempData?.name || '');
     return firstName
       ? `¡Listo, ${firstName}! 🙌 Un asesor te contactará en breve.`
@@ -770,7 +770,7 @@ async function handleConfirmingEscalation(phone, message, session) {
   }
 
   if (CORRIGE_PATTERNS.test(message.trim())) {
-    sessionManager.updateSession(phone, {
+    await sessionManager.updateSession(phone, {
       flowState: 'confirming_escalation',
       tempData:  { ...session.tempData, esperandoCorreccion: true },
     });
@@ -781,7 +781,7 @@ async function handleConfirmingEscalation(phone, message, session) {
     const nuevaDescripcion = message.trim();
     session.tempData.resumenEscalacion  = nuevaDescripcion;
     session.tempData.esperandoCorreccion = false;
-    sessionManager.updateSession(phone, { tempData: session.tempData });
+    await sessionManager.updateSession(phone, { tempData: session.tempData });
     return `Perfecto, queda así:\n\n"${nuevaDescripcion}"\n\n¿Lo confirmas? 😊`;
   }
 

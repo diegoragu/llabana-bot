@@ -52,7 +52,7 @@ async function procesarMensaje(from, body) {
     log.lines.push(`Bot: ${reply}`);
     console.log(`📤 [${from}]: ${reply.substring(0, 120)}${reply.length > 120 ? '…' : ''}`);
 
-    const session = sessionManager.getSession(from);
+    const session = await sessionManager.getSession(from);
     const nombre = session?.customer?.name || session?.tempData?.name || '';
     const telefono = from.replace('whatsapp:', '');
     await updateTranscript(telefono, nombre, log.lines.join('\n'));
