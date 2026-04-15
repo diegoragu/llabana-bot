@@ -88,14 +88,15 @@ async function getProductosPorEspecie(query) {
       const keywords = normalize(r[10]); // Col K: Palabras clave
 
       return producto.includes(qNorm) ||
-             qNorm.includes(producto) ||
+             (producto && qNorm.includes(producto)) ||
              especie.includes(qNorm)  ||
-             qNorm.includes(especie)  ||
+             (especie && qNorm.includes(especie))   ||
              marca.includes(qNorm)    ||
-             qNorm.includes(marca)    ||
-             keywords.split(',').some(k =>
-               normalize(k).includes(qNorm) || qNorm.includes(normalize(k))
-             ) ||
+             (marca && qNorm.includes(marca))       ||
+             keywords.split(',').some(k => {
+               const kn = normalize(k).trim();
+               return kn && (kn.includes(qNorm) || qNorm.includes(kn));
+             }) ||
              usos.includes(qNorm) ||
              etapa.includes(qNorm);
     }).slice(0, 4);
