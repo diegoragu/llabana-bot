@@ -315,7 +315,22 @@ async function handleAskingMexico(phone, message, session) {
 
 const RESPUESTA_FLUJO = /^(s[ií],?|no,?|ok,?|claro,?|desde\s+\w+|estoy\s+en|soy\s+de|vengo\s+de)/i;
 
+const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|es\s+saber|para\s+saber|quiero\s+saber)/i;
+
 async function handleAskingName(phone, message, session) {
+  // Rechazar verbos de intención que no son nombres
+  if (NO_ES_NOMBRE.test(message.trim())) {
+    const attempts = session.tempData?.nameAttempts ?? 0;
+    if (attempts < 2) {
+      sessionManager.updateSession(phone, {
+        tempData: { ...session.tempData, nameAttempts: attempts + 1 },
+      });
+    } else {
+      sessionManager.updateSession(phone, { flowState: 'active' });
+    }
+    return '¿Me dices tu nombre? Por ejemplo: Juan o María 😊';
+  }
+
   // Filtrar respuestas de contexto que no son nombres ("Sí", "Ok", "Soy de Puebla", etc.)
   if (RESPUESTA_FLUJO.test(message.trim())) {
     const partes = message.split(/,\s*/);
@@ -636,18 +651,20 @@ async function generateResumen(conversationHistory, customer) {
       max_tokens: 80,
       messages: [{
         role: 'user',
-        content: `Eres un asistente que resume conversaciones de WhatsApp.\n\n` +
-          `Basándote en esta conversación entre un cliente y el bot de Llabana, ` +
-          `escribe UN resumen de máximo 15 palabras de lo que necesita el cliente.\n` +
-          `Empieza con "Cliente quiere..." o "Cliente necesita...".\n` +
-          `Responde SOLO con el resumen, sin explicaciones, sin comillas, sin puntos al final.\n\n` +
-          `Conversación:\n${historial}\n\nResumen:`,
+        content: `Eres un asistente que resume solicitudes de clientes.\n\n` +
+          `Basándote en esta conversación, escribe UN resumen de máximo 15 palabras ` +
+          `de lo que necesita el cliente.\n` +
+          `Empieza OBLIGATORIAMENTE con "Cliente quiere" o "Cliente necesita".\n` +
+          `Responde SOLO con el resumen. Sin comillas, sin puntos, sin explicaciones.\n\n` +
+          `Conversación:\n${historial}\n\nResumen (empieza con Cliente quiere o Cliente necesita):`,
       }],
     });
     const texto = response.content[0].text.trim()
-      .replace(/^["']|["']$/g, '')
+      .replace(/^["'`]|["'`]$/g, '')
       .replace(/\.$/, '')
-      .substring(0, 100);
+      .replace(/^(resumen:|summary:)/i, '')
+      .trim()
+      .substring(0, 120);
     return texto || 'Cliente requiere atención de un asesor';
   } catch (err) {
     console.error('Error generando resumen:', err.message);
@@ -674,7 +691,7 @@ async function escalateWithResumen(phone, session, motivo) {
   return `Antes de conectarte con un asesor, déjame confirmar tu solicitud:\n\n"${resumen}"\n\n¿Es correcto? 😊`;
 }
 
-const CONFIRMA_PATTERNS = /^(s[ií]|correcto|exacto|as[ií]\s*es|eso\s*es|ok|dale|claro|perfecto|confirmo|est[aá]\s*bien|bien\s*as[ií]|as[ií]\s*est[aá]|de\s*acuerdo|va|listo|si\s*as[ií])$/i;
+const CONFIRMA_PATTERNS = /^(s[ií]|correcto|exacto|as[ií]\s*es|eso\s*es|ok|dale|claro|perfecto|confirmo|est[aá]\s*bien(\s*as[ií])?|bien\s*as[ií]|as[ií]\s*est[aá]|de\s*acuerdo|va|listo|si\s*as[ií]|as[íi])$/i;
 const CORRIGE_PATTERNS  = /^(no|no es|no exactamente|espera|corrige|falta|también|además)/i;
 
 async function handleConfirmingEscalation(phone, message, session) {
