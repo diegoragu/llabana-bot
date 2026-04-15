@@ -78,12 +78,18 @@ async function getProductosPorEspecie(query) {
 
     const relevantes = rows.filter(r => {
       const especie  = (r[2]  || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const keywords = (r[10] || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const producto = (r[1]  || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      return especie.includes(queryLower) ||
-             keywords.includes(queryLower) ||
-             queryLower.includes(especie) ||
-             producto.includes(queryLower);
+      const marca    = (r[3]  || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const usos     = (r[7]  || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const keywords = (r[10] || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const qNorm    = queryLower;
+
+      return especie.includes(qNorm)  ||
+             qNorm.includes(especie)  ||
+             producto.includes(qNorm) ||
+             marca.includes(qNorm)    ||
+             keywords.includes(qNorm) ||
+             usos.includes(qNorm);
     }).slice(0, 3);
 
     if (relevantes.length === 0) return '';
