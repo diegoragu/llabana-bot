@@ -207,6 +207,31 @@ async function handleMessage(phone, messageBody) {
       if (entryPoint !== 'Directo') {
         sheetsService.updateOrderData(customer.rowIndex, { entryPoint }).catch(() => {});
       }
+
+      // Actualizar nombre si el registro quedó vacío (ej. tras reinicio mid-flow)
+      if (customer.rowIndex && !customer.name && session.tempData?.name) {
+        sheetsService.updateOrderData(customer.rowIndex, {
+          name: session.tempData.name,
+        }).catch(() => {});
+      }
+
+      // Recuperar escalación pendiente tras reinicio de servidor
+      const notas = customer.notas || '';
+      const pendiente = notas.match(/PENDIENTE_ESCALACION: (.+)/);
+      if (pendiente) {
+        const resumenGuardado = pendiente[1];
+        sessionManager.updateSession(phone, {
+          flowState: 'confirming_escalation',
+          customer:  customerData,
+          tempData:  {
+            ...session.tempData,
+            resumenEscalacion: resumenGuardado,
+            motivoEscalacion:  'Retomado tras reinicio',
+          },
+        });
+        return `Retomando tu solicitud anterior:\n\n"${resumenGuardado}"\n\n¿Confirmas que esto es lo que necesitas? 😊`;
+      }
+
       const nombre = primerNombre(customer.name);
       if (!nombre) {
         sessionManager.updateSession(phone, {
@@ -243,6 +268,10 @@ async function handleMessage(phone, messageBody) {
   }
 }
 
+// ── Mutex para evitar registros duplicados por race condition ─────────────────
+
+const registrandoTelefonos = new Set();
+
 // ── Filtro México ─────────────────────────────────────────────────────────────
 
 async function handleAskingMexico(phone, message, session) {
@@ -278,30 +307,49 @@ async function handleAskingMexico(phone, message, session) {
       });
       console.log(`🔄 Cliente ya existe, usando fila ${rowIndex}`);
     } else {
-      rowIndex = await sheetsService.registerCustomer({
-        phone,
-        name:          '',
-        email:         '',
-        state:         '',
-        city:          '',
-        cp:            '',
-        channel:       'paqueteria',
-        channelDetail: 'Nacional',
-        segmento:      'Lead frío',
-        aceWa:         'SI',
-        entryPoint:    session.tempData?.entryPoint || 'Directo',
-        origen:        'WhatsApp',
-      });
-      sessionManager.updateSession(phone, {
-        customer: {
+      // Mutex: evitar registro doble por mensajes en ráfaga
+      if (registrandoTelefonos.has(phone)) {
+        console.log(`⏳ Registro en curso para ${phone}, esperando…`);
+        await new Promise(r => setTimeout(r, 2000));
+        const yaRegistrado = await sheetsService.findCustomer(phone);
+        if (yaRegistrado) {
+          rowIndex = yaRegistrado.rowIndex;
+          sessionManager.updateSession(phone, {
+            customer: { ...yaRegistrado, channel: 'paqueteria', channelDetail: 'Nacional' },
+          });
+          sessionManager.updateSession(phone, { flowState: 'asking_name' });
+          return '¿Con quién tengo el gusto? 😊';
+        }
+      }
+      registrandoTelefonos.add(phone);
+      try {
+        rowIndex = await sheetsService.registerCustomer({
           phone,
-          rowIndex,
+          name:          '',
+          email:         '',
+          state:         '',
+          city:          '',
+          cp:            '',
           channel:       'paqueteria',
           channelDetail: 'Nacional',
           segmento:      'Lead frío',
-        },
-      });
-      console.log(`✅ Lead registrado al confirmar México | ${phone} | fila ${rowIndex}`);
+          aceWa:         'SI',
+          entryPoint:    session.tempData?.entryPoint || 'Directo',
+          origen:        'WhatsApp',
+        });
+        sessionManager.updateSession(phone, {
+          customer: {
+            phone,
+            rowIndex,
+            channel:       'paqueteria',
+            channelDetail: 'Nacional',
+            segmento:      'Lead frío',
+          },
+        });
+        console.log(`✅ Lead registrado al confirmar México | ${phone} | fila ${rowIndex}`);
+      } finally {
+        registrandoTelefonos.delete(phone);
+      }
     }
   } catch (err) {
     console.error('Error registrando lead en México:', err.message);
@@ -677,6 +725,13 @@ async function escalateWithResumen(phone, session, motivo) {
     session.conversationHistory || [],
     session.customer
   );
+
+  // Persistir en Sheets para sobrevivir reinicios de servidor
+  if (session.customer?.rowIndex) {
+    sheetsService.updateOrderData(session.customer.rowIndex, {
+      notas: `PENDIENTE_ESCALACION: ${resumen}`,
+    }).catch(() => {});
+  }
 
   session.tempData = {
     ...session.tempData,
