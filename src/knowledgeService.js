@@ -73,24 +73,41 @@ async function getProductosPorEspecie(query) {
       range: `${SHEET_PRODUCTOS}!A:L`,
     });
     const rows = (res.data.values || []).slice(1);
-    const queryLower = query.toLowerCase()
+    const qNorm = query.toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-    const relevantes = rows.filter(r => {
-      const especie  = (r[2]  || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const producto = (r[1]  || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const marca    = (r[3]  || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const usos     = (r[7]  || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const keywords = (r[10] || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const qNorm    = queryLower;
+    const normalize = (val) => (val || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-      return especie.includes(qNorm)  ||
+    let relevantes = rows.filter(r => {
+      const producto = normalize(r[1]);  // Col B: Producto
+      const especie  = normalize(r[2]);  // Col C: Especie
+      const marca    = normalize(r[3]);  // Col D: Marca
+      const usos     = normalize(r[7]);  // Col H: Usos
+      const etapa    = normalize(r[8]);  // Col I: Etapa
+      const keywords = normalize(r[10]); // Col K: Palabras clave
+
+      return producto.includes(qNorm) ||
+             qNorm.includes(producto) ||
+             especie.includes(qNorm)  ||
              qNorm.includes(especie)  ||
-             producto.includes(qNorm) ||
              marca.includes(qNorm)    ||
-             keywords.includes(qNorm) ||
-             usos.includes(qNorm);
-    }).slice(0, 3);
+             qNorm.includes(marca)    ||
+             keywords.split(',').some(k =>
+               normalize(k).includes(qNorm) || qNorm.includes(normalize(k))
+             ) ||
+             usos.includes(qNorm) ||
+             etapa.includes(qNorm);
+    }).slice(0, 4);
+
+    // Fallback: buscar por cada palabra del query por separado
+    if (relevantes.length === 0) {
+      const palabras = qNorm.split(/\s+/).filter(p => p.length > 3);
+      relevantes = rows.filter(r => {
+        const texto = [r[1], r[2], r[3], r[7], r[8], r[10]].map(normalize).join(' ');
+        return palabras.some(p => texto.includes(p));
+      }).slice(0, 4);
+    }
 
     if (relevantes.length === 0) return '';
 
