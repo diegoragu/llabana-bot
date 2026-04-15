@@ -132,7 +132,7 @@ async function webhookHandler(req, res) {
     const mensajeCompleto = entry.messages.join(' ');
     pendingMessages.delete(from);
     await procesarMensaje(from, mensajeCompleto);
-  }, 5000);
+  }, 1500);
 
   pendingMessages.set(from, pending);
 }

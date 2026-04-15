@@ -294,6 +294,22 @@ async function handleAskingMexico(phone, message, session) {
 
   // México confirmado → registrar lead (o reusar si ya existe) y pedir nombre
   let rowIndex = null;
+
+  // Mutex: evitar registro doble por mensajes en ráfaga
+  if (registrandoTelefonos.has(phone)) {
+    console.log(`⏳ Registro en curso para ${phone}, esperando...`);
+    await new Promise(r => setTimeout(r, 2000));
+    const yaRegistrado = await sheetsService.findCustomer(phone);
+    if (yaRegistrado) {
+      await sessionManager.updateSession(phone, {
+        flowState: 'asking_name',
+        customer: { ...yaRegistrado, channel: 'paqueteria', channelDetail: 'Nacional' },
+      });
+      return '¿Con quién tengo el gusto? 😊';
+    }
+  }
+
+  registrandoTelefonos.add(phone);
   try {
     const yaExiste = await sheetsService.findCustomer(phone);
     if (yaExiste) {
@@ -307,52 +323,35 @@ async function handleAskingMexico(phone, message, session) {
       });
       console.log(`🔄 Cliente ya existe, usando fila ${rowIndex}`);
     } else {
-      // Mutex: evitar registro doble por mensajes en ráfaga
-      if (registrandoTelefonos.has(phone)) {
-        console.log(`⏳ Registro en curso para ${phone}, esperando…`);
-        await new Promise(r => setTimeout(r, 2000));
-        const yaRegistrado = await sheetsService.findCustomer(phone);
-        if (yaRegistrado) {
-          rowIndex = yaRegistrado.rowIndex;
-          await sessionManager.updateSession(phone, {
-            customer: { ...yaRegistrado, channel: 'paqueteria', channelDetail: 'Nacional' },
-          });
-          await sessionManager.updateSession(phone, { flowState: 'asking_name' });
-          return '¿Con quién tengo el gusto? 😊';
-        }
-      }
-      registrandoTelefonos.add(phone);
-      try {
-        rowIndex = await sheetsService.registerCustomer({
+      rowIndex = await sheetsService.registerCustomer({
+        phone,
+        name:          '',
+        email:         '',
+        state:         '',
+        city:          '',
+        cp:            '',
+        channel:       'paqueteria',
+        channelDetail: 'Nacional',
+        segmento:      'Lead frío',
+        aceWa:         'SI',
+        entryPoint:    session.tempData?.entryPoint || 'Directo',
+        origen:        'WhatsApp',
+      });
+      await sessionManager.updateSession(phone, {
+        customer: {
           phone,
-          name:          '',
-          email:         '',
-          state:         '',
-          city:          '',
-          cp:            '',
+          rowIndex,
           channel:       'paqueteria',
           channelDetail: 'Nacional',
           segmento:      'Lead frío',
-          aceWa:         'SI',
-          entryPoint:    session.tempData?.entryPoint || 'Directo',
-          origen:        'WhatsApp',
-        });
-        await sessionManager.updateSession(phone, {
-          customer: {
-            phone,
-            rowIndex,
-            channel:       'paqueteria',
-            channelDetail: 'Nacional',
-            segmento:      'Lead frío',
-          },
-        });
-        console.log(`✅ Lead registrado al confirmar México | ${phone} | fila ${rowIndex}`);
-      } finally {
-        registrandoTelefonos.delete(phone);
-      }
+        },
+      });
+      console.log(`✅ Lead registrado al confirmar México | ${phone} | fila ${rowIndex}`);
     }
   } catch (err) {
     console.error('Error registrando lead en México:', err.message);
+  } finally {
+    registrandoTelefonos.delete(phone);
   }
 
   await sessionManager.updateSession(phone, { flowState: 'asking_name' });
@@ -363,7 +362,7 @@ async function handleAskingMexico(phone, message, session) {
 
 const RESPUESTA_FLUJO = /^(s[ií],?|no,?|ok,?|claro,?|desde\s+\w+|estoy\s+en|soy\s+de|vengo\s+de)/i;
 
-const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|es\s+saber|para\s+saber|quiero\s+saber)/i;
+const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|es\s+(saber|que|para|sobre)|para\s+saber|quiero\s+saber|quisiera|necesito\s+saber|me\s+gustar[ií]a)/i;
 
 async function handleAskingName(phone, message, session) {
   // Rechazar verbos de intención que no son nombres
@@ -685,12 +684,18 @@ async function handleEscalated(phone, message, session) {
 
 // ── Resumen y escalación con confirmación ─────────────────────────────────────
 
-async function generateResumen(conversationHistory, customer) {
+async function generateResumen(conversationHistory, customer, motivo = '') {
+  const historialFiltrado = (conversationHistory || []).slice(-10);
+
+  if (historialFiltrado.length < 2) {
+    return motivo || 'Cliente requiere atención de un asesor';
+  }
+
   try {
     const Anthropic = require('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    const historial = (conversationHistory || []).slice(-10)
+    const historial = historialFiltrado
       .map(m => `${m.role === 'user' ? 'Cliente' : 'Bot'}: ${m.content}`)
       .join('\n');
 
@@ -723,7 +728,8 @@ async function generateResumen(conversationHistory, customer) {
 async function escalateWithResumen(phone, session, motivo) {
   const resumen = await generateResumen(
     session.conversationHistory || [],
-    session.customer
+    session.customer,
+    motivo
   );
 
   // Persistir en Sheets para sobrevivir reinicios de servidor

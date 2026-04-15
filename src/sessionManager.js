@@ -8,7 +8,18 @@ const Redis = require('ioredis');
 // Conectar a Redis si está disponible, sino usar memoria como fallback
 let redis = null;
 if (process.env.REDIS_URL) {
-  redis = new Redis(process.env.REDIS_URL);
+  redis = new Redis(process.env.REDIS_URL, {
+    retryStrategy(times) {
+      const delay = Math.min(times * 500, 5000);
+      console.log(`🔄 Redis reconectando en ${delay}ms (intento ${times})`);
+      return delay;
+    },
+    reconnectOnError(err) {
+      console.error('Redis error de conexión:', err.message);
+      return true;
+    },
+    maxRetriesPerRequest: 3,
+  });
   redis.on('connect', () => console.log('✅ Redis conectado'));
   redis.on('error', (err) => console.error('❌ Redis error:', err.message));
 } else {

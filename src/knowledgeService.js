@@ -102,7 +102,7 @@ async function getProductosPorEspecie(query) {
 
     // Fallback: buscar por cada palabra del query por separado
     if (relevantes.length === 0) {
-      const palabras = qNorm.split(/\s+/).filter(p => p.length > 3);
+      const palabras = qNorm.split(/\s+/).filter(p => p.length > 2);
       relevantes = rows.filter(r => {
         const texto = [r[1], r[2], r[3], r[7], r[8], r[10]].map(normalize).join(' ');
         return palabras.some(p => texto.includes(p));

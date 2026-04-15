@@ -138,7 +138,7 @@ async function chat(history, customer, query = '') {
 
   // Sistema dinámico: KB del Sheets si está disponible, SYSTEM_BASE como fallback
   const systemDynamic = kb
-    ? `A continuación están las instrucciones, tono y escenarios que debes seguir:\n\n${kb}`
+    ? `${SYSTEM_BASE}\n\n━━━ CONOCIMIENTO ADICIONAL ━━━\n${kb}\n━━━━━━━━━━━━━━━━━━━━━━━━━`
     : SYSTEM_BASE;
 
   const productosContext = productos
