@@ -687,17 +687,22 @@ async function handleEscalated(phone, message, session) {
 async function generateResumen(conversationHistory, customer, motivo = '') {
   const historialFiltrado = (conversationHistory || []).slice(-10);
 
+  console.log(`🔍 generateResumen: historial=${historialFiltrado.length} msgs | motivo="${motivo}"`);
+
   if (historialFiltrado.length < 2) {
+    console.log(`🔍 generateResumen: historial corto → usando motivo`);
     return motivo || 'Cliente requiere atención de un asesor';
   }
+
+  const historial = historialFiltrado
+    .map(m => `${m.role === 'user' ? 'Cliente' : 'Bot'}: ${m.content}`)
+    .join('\n');
+
+  console.log(`🔍 generateResumen: llamando a Claude con ${historial.length} chars`);
 
   try {
     const Anthropic = require('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-    const historial = historialFiltrado
-      .map(m => `${m.role === 'user' ? 'Cliente' : 'Bot'}: ${m.content}`)
-      .join('\n');
 
     const response = await client.messages.create({
       model:      'claude-sonnet-4-6',
@@ -718,10 +723,12 @@ async function generateResumen(conversationHistory, customer, motivo = '') {
       .replace(/^(resumen:|summary:)/i, '')
       .trim()
       .substring(0, 120);
-    return texto || 'Cliente requiere atención de un asesor';
+
+    console.log(`🔍 generateResumen: resultado="${texto}"`);
+    return texto || motivo || 'Cliente requiere atención de un asesor';
   } catch (err) {
     console.error('Error generando resumen:', err.message);
-    return 'Cliente requiere atención de un asesor';
+    return motivo || 'Cliente requiere atención de un asesor';
   }
 }
 
@@ -756,7 +763,9 @@ const CONFIRMA_PATTERNS = /^(s[ií]|correcto|exacto|as[ií]\s*es|eso\s*es|ok|dal
 const CORRIGE_PATTERNS  = /^(no|no es|no exactamente|espera|corrige|falta|también|además)/i;
 
 async function handleConfirmingEscalation(phone, message, session) {
-  const resumen = session.tempData?.resumenEscalacion || 'Cliente requiere atención de un asesor';
+  const resumen = session.tempData?.resumenEscalacion ||
+                  session.tempData?.motivoEscalacion  ||
+                  'requiere atención de un asesor';
   const motivo  = session.tempData?.motivoEscalacion  || '';
 
   if (CONFIRMA_PATTERNS.test(message.trim())) {
@@ -791,7 +800,22 @@ async function handleConfirmingEscalation(phone, message, session) {
     return `Perfecto, queda así:\n\n"${nuevaDescripcion}"\n\n¿Lo confirmas? 😊`;
   }
 
-  return `Tu solicitud quedó como:\n\n"${resumen}"\n\n¿Está bien así o quieres cambiar algo?`;
+  // Mensaje sustancial → confirmar implícitamente y escalar
+  if (message.trim().length > 10 || message.includes('?')) {
+    await notifyWig(phone, session, motivo, resumen);
+    if (session.customer?.rowIndex) {
+      sheetsService.updateOrderData(session.customer.rowIndex, {
+        notas: resumen,
+      }).catch(() => {});
+    }
+    await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    const firstName = primerNombre(session.customer?.name || session.tempData?.name || '');
+    return firstName
+      ? `¡Listo, ${firstName}! 🙌 Un asesor te contactará en breve.`
+      : '¡Listo! 🙌 Un asesor te contactará en breve.';
+  }
+
+  return `Tu solicitud: "${resumen}" — ¿confirmas? (responde Sí o No)`;
 }
 
 // ── Notificación a asesor ─────────────────────────────────────────────────────
