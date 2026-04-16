@@ -16,19 +16,20 @@ async function getSheets() {
   return google.sheets({ version: 'v4', auth: getAuth() });
 }
 
-// Cache con TTL de 30 minutos para no consultar Sheets en cada mensaje
+// Cache con TTL diferenciado según frecuencia de cambio
 let _kbCache     = null;
 let _kbCacheTime = null;
 let _prodCache     = null;
 let _prodCacheTime = null;
-const CACHE_TTL = 30 * 60 * 1000;
+const KB_CACHE_TTL   = 30 * 60 * 1000; // FAQs: 30 min (cambia poco)
+const PROD_CACHE_TTL =  5 * 60 * 1000; // Productos: 5 min (cambia seguido)
 
 /**
  * Lee la pestaña "6 FAQs" completa y retorna como texto formateado.
  * Formato esperado: columna A = sección, columna B = descripción.
  */
 async function getKnowledgeBase() {
-  if (_kbCache && _kbCacheTime && Date.now() - _kbCacheTime < CACHE_TTL) {
+  if (_kbCache && _kbCacheTime && Date.now() - _kbCacheTime < KB_CACHE_TTL) {
     return _kbCache;
   }
   try {
@@ -62,7 +63,7 @@ async function getKnowledgeBase() {
 async function getProductosPorEspecie(query) {
   const cacheKey = query.toLowerCase();
   if (_prodCache?.[cacheKey] && _prodCacheTime &&
-      Date.now() - _prodCacheTime < CACHE_TTL) {
+      Date.now() - _prodCacheTime < PROD_CACHE_TTL) {
     return _prodCache[cacheKey];
   }
 
