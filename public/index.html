@@ -264,7 +264,7 @@ function openConv(i, el) {
             return `
               <div class="msg-row ${m.s}">
                 <div class="av ${m.s==='bot'?'b':'c'}">${m.s==='bot'?'B':'C'}</div>
-                <div class="bubble">${esc(m.t)}</div>
+                <div class="bubble">${m.t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>').replace(/\n/g,'<br>')}</div>
               </div>`;
           }).join('')
         : '<div style="text-align:center;font-size:12px;color:var(--muted);padding:20px">Sin mensajes</div>'}
