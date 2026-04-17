@@ -362,7 +362,7 @@ async function handleAskingMexico(phone, message, session) {
 
 const RESPUESTA_FLUJO = /^(s[ií],?|no,?|ok,?|claro,?|desde\s+\w+|estoy\s+en|soy\s+de|vengo\s+de)/i;
 
-const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|es\s+(saber|que|para|sobre)|para\s+saber|quiero\s+saber|quisiera|necesito\s+saber|me\s+gustar[ií]a)/i;
+const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|es\s+(saber|que|para|sobre)|para\s+saber|quiero\s+saber|quisiera|necesito\s+saber|me\s+gustar[ií]a|tiene\s+costo|tiene\s+precio|tiene\s+env[ií]o|cuanto\s+cuesta|si\s+tiene|si\s+manejan|de\s+el\s+estado|del\s+estado|en\s+el\s+estado)/i;
 
 async function handleAskingName(phone, message, session) {
   // Rechazar verbos de intención que no son nombres
@@ -376,6 +376,21 @@ async function handleAskingName(phone, message, session) {
       await sessionManager.updateSession(phone, { flowState: 'active' });
     }
     return '¿Me dices tu nombre? Por ejemplo: Juan o María 😊';
+  }
+
+  // Extraer nombre de frases como "mi nombre es X", "soy X", "me llamo X"
+  const miNombreMatch = message.match(
+    /mi\s+nombre\s+es\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)/i
+  );
+  if (miNombreMatch) {
+    message = miNombreMatch[1];
+  } else {
+    const soiMatch = message.match(
+      /(?:soy|me\s+llamo)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)/i
+    );
+    if (soiMatch) {
+      message = soiMatch[1];
+    }
   }
 
   // Filtrar respuestas de contexto que no son nombres ("Sí", "Ok", "Soy de Puebla", etc.)
@@ -759,7 +774,7 @@ async function escalateWithResumen(phone, session, motivo) {
   return `Antes de conectarte con un asesor, déjame confirmar tu solicitud:\n\n"${resumen}"\n\n¿Es correcto? 😊`;
 }
 
-const CONFIRMA_PATTERNS = /^(s[ií]|correcto|exacto|as[ií]\s*es|eso\s*es|ok|dale|claro|perfecto|confirmo|est[aá]\s*bien(\s*as[ií])?|bien\s*as[ií]|as[ií]\s*est[aá]|de\s*acuerdo|va|listo|si\s*as[ií]|as[íi])$/i;
+const CONFIRMA_PATTERNS = /\b(s[ií]|correcto|exacto|as[ií]\s*es|eso\s*es|ok|dale|claro|perfecto|confirmo|est[aá]\s*bien|de\s*acuerdo|va|listo|as[ií]|confirm|es\s*correcto|correcto\s*gracias|s[ií]\s*es\s*correcto|as[ií]\s*lo\s*quiero|as[ií]\s*me\s*gustar[ií]a)\b/i;
 const CORRIGE_PATTERNS  = /^(no|no es|no exactamente|espera|corrige|falta|también|además)/i;
 
 async function handleConfirmingEscalation(phone, message, session) {
