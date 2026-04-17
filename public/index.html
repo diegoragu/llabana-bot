@@ -4,74 +4,105 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Llabana · Conversaciones</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --green: #2E7D32; --green-d: #1B5E20; --green-p: #E8F5E9;
-  --orange: #F57C00;
-  --bg: #F5F6F5; --surface: #fff; --border: #E0E5E0;
-  --text: #1A2E1A; --muted: #6B7E6B;
-  --sans: 'DM Sans', sans-serif; --mono: 'DM Mono', monospace;
+  --green:    #2E7D32;
+  --green-d:  #1B5E20;
+  --green-l:  #43A047;
+  --green-p:  #F1F8F1;
+  --orange:   #E65100;
+  --orange-p: #FFF3E0;
+  --red:      #C62828;
+  --blue:     #1565C0;
+  --blue-p:   #E3F2FD;
+  --purple:   #6A1B9A;
+  --purple-p: #F3E5F5;
+  --gold:     #F9A825;
+  --gold-p:   #FFFDE7;
+  --bg:       #F0F2F0;
+  --surface:  #FFFFFF;
+  --border:   #DDE4DD;
+  --text:     #1A2A1A;
+  --muted:    #607060;
+  --sans:     'IBM Plex Sans', sans-serif;
+  --mono:     'IBM Plex Mono', monospace;
 }
 body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; }
-
 .topbar {
-  background: var(--surface); border-bottom: 1px solid var(--border);
-  padding: 0 20px; height: 52px; display: flex; align-items: center;
-  justify-content: space-between; position: sticky; top: 0; z-index: 10;
+  background: var(--green-d);
+  padding: 0 20px; height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 10;
 }
-.topbar-brand { display: flex; align-items: center; gap: 8px; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: #8BC34A; }
-.brand-name { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--green); }
-.btn-sm { font-size: 12px; padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; font-family: var(--sans); color: var(--muted); }
-.btn-sm:hover { border-color: var(--green); color: var(--green); }
-
-.layout { display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 52px); }
-
+.topbar-brand { display: flex; align-items: center; gap: 10px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #8BC34A; box-shadow: 0 0 0 2px rgba(139,195,74,.3); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+.brand-name { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; color: rgba(255,255,255,.9); font-weight: 600; }
+.topbar-right { display: flex; align-items: center; gap: 8px; }
+.counter { font-family: var(--mono); font-size: 11px; color: rgba(255,255,255,.5); }
+.btn-refresh { font-size: 12px; padding: 5px 12px; border: 1px solid rgba(255,255,255,.25); border-radius: 5px; background: rgba(255,255,255,.1); cursor: pointer; font-family: var(--sans); color: rgba(255,255,255,.8); transition: all .15s; }
+.btn-refresh:hover { background: rgba(255,255,255,.2); color: white; }
+.layout { display: grid; grid-template-columns: 320px 1fr; height: calc(100vh - 52px); }
 .panel-left { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
-.pl-header { padding: 12px 14px; border-bottom: 1px solid var(--border); }
-.pl-label { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-.pl-header input { width: 100%; padding: 8px 11px; border: 1.5px solid var(--border); border-radius: 7px; font-family: var(--sans); font-size: 13px; outline: none; background: var(--bg); }
-.pl-header input:focus { border-color: var(--green); background: white; }
-
+.pl-header { padding: 14px; border-bottom: 1px solid var(--border); }
+.pl-search { width: 100%; padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 7px; font-family: var(--sans); font-size: 13px; outline: none; background: var(--bg); transition: border-color .15s; }
+.pl-search:focus { border-color: var(--green); background: white; }
+.pl-filters { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.filter-btn { font-size: 11px; padding: 3px 9px; border-radius: 20px; border: 1px solid var(--border); background: none; cursor: pointer; font-family: var(--sans); color: var(--muted); transition: all .15s; white-space: nowrap; }
+.filter-btn:hover { border-color: var(--green); color: var(--green); }
+.filter-btn.active { background: var(--green); color: white; border-color: var(--green); }
 .conv-list { overflow-y: auto; flex: 1; }
-.conv-item { padding: 12px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.conv-item { padding: 11px 14px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; }
 .conv-item:hover { background: var(--green-p); }
-.conv-item.sel { background: var(--green-p); border-left: 3px solid var(--green); }
+.conv-item.sel { background: var(--green-p); border-left: 3px solid var(--green); padding-left: 11px; }
 .ci-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px; }
 .ci-name { font-size: 13px; font-weight: 600; }
 .ci-date { font-size: 10px; color: var(--muted); font-family: var(--mono); }
-.ci-phone { font-size: 11px; color: var(--muted); font-family: var(--mono); }
-
+.ci-phone { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-bottom: 5px; }
+.ci-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.badge { font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 10px; font-family: var(--mono); white-space: nowrap; }
+.badge-recompra     { background: var(--green-d); color: white; }
+.badge-comprador    { background: var(--green); color: white; }
+.badge-mayoreo      { background: var(--purple-p); color: var(--purple); border: 1px solid var(--purple); }
+.badge-carrito      { background: var(--gold-p); color: #7B6000; border: 1px solid var(--gold); }
+.badge-lead         { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+.badge-escalado     { background: var(--orange-p); color: var(--orange); border: 1px solid #FFCC02; }
+.badge-solo-cuenta  { background: var(--blue-p); color: var(--blue); border: 1px solid var(--blue); }
 .panel-right { display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
-.chat-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 20px; }
-.ch-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
-.ch-phone { font-size: 12px; color: var(--muted); font-family: var(--mono); }
-.chat-body { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 9px; }
-
+.chat-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; }
+.ch-left { display: flex; align-items: center; gap: 10px; }
+.ch-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--green); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.ch-name { font-size: 15px; font-weight: 600; }
+.ch-meta { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.chat-body { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
 .msg-row { display: flex; align-items: flex-end; gap: 7px; }
 .msg-row.bot { flex-direction: row; }
 .msg-row.client { flex-direction: row-reverse; }
-.av { width: 27px; height: 27px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.av { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
 .av.b { background: var(--green); color: white; }
 .av.c { background: var(--orange); color: white; }
-.bubble { max-width: 70%; padding: 9px 13px; border-radius: 15px; font-size: 13px; line-height: 1.5; }
-.msg-row.bot .bubble { background: white; border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+.bubble { max-width: 68%; padding: 9px 13px; border-radius: 14px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.msg-row.bot .bubble { background: white; border: 1px solid var(--border); border-bottom-left-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
 .msg-row.client .bubble { background: var(--green); color: white; border-bottom-right-radius: 3px; }
-
-.empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); gap: 10px; text-align: center; padding: 40px; }
-.empty-icon { font-size: 36px; opacity: .3; }
+.sys-msg { text-align: center; margin: 6px 0; font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.sys-msg span { background: var(--border); padding: 3px 10px; border-radius: 10px; }
+.escalation-banner { background: var(--orange-p); border: 1px solid #FFCC02; border-radius: 8px; padding: 10px 14px; margin: 8px 0; font-size: 12px; display: flex; align-items: flex-start; gap: 8px; }
+.escalation-banner .esc-icon { font-size: 16px; flex-shrink: 0; }
+.escalation-banner .esc-text { color: var(--orange); }
+.escalation-banner .esc-label { font-weight: 600; font-size: 11px; font-family: var(--mono); margin-bottom: 2px; }
+.empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); gap: 10px; padding: 40px; }
+.empty-icon { font-size: 36px; opacity: .25; }
 .empty-title { font-size: 15px; font-weight: 600; }
-.empty-sub { font-size: 12px; }
-
+.empty-sub { font-size: 12px; text-align: center; }
 @media (max-width: 700px) {
   .layout { grid-template-columns: 1fr; }
   .panel-right { display: none; position: fixed; inset: 52px 0 0; z-index: 20; }
   .panel-right.open { display: flex; }
   .back-btn { display: flex !important; }
 }
-.back-btn { display: none; align-items: center; gap: 5px; background: none; border: none; color: var(--green); font-family: var(--sans); font-size: 13px; cursor: pointer; margin-right: 10px; }
+.back-btn { display: none; align-items: center; gap: 5px; background: none; border: none; color: var(--green); font-family: var(--sans); font-size: 13px; cursor: pointer; margin-right: 8px; }
 </style>
 </head>
 <body>
@@ -81,14 +112,22 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
     <div class="dot"></div>
     <span class="brand-name">LLABANA · CONVERSACIONES</span>
   </div>
-  <button class="btn-sm" onclick="loadData()">↻ Actualizar</button>
+  <div class="topbar-right">
+    <span class="counter" id="counter"></span>
+    <button class="btn-refresh" onclick="loadData()">↻ Actualizar</button>
+  </div>
 </div>
 
 <div class="layout">
   <div class="panel-left">
     <div class="pl-header">
-      <div class="pl-label">Chats</div>
-      <input type="text" id="search" placeholder="Buscar nombre o teléfono…" oninput="filter()">
+      <input type="text" class="pl-search" id="search" placeholder="Buscar nombre o teléfono…" oninput="filter()">
+      <div class="pl-filters">
+        <button class="filter-btn active" data-filter="todos" onclick="setFilter('todos',this)">Todos</button>
+        <button class="filter-btn" data-filter="escalados" onclick="setFilter('escalados',this)">🚨 Escalados</button>
+        <button class="filter-btn" data-filter="mayoreo" onclick="setFilter('mayoreo',this)">💼 Mayoreo</button>
+        <button class="filter-btn" data-filter="compradores" onclick="setFilter('compradores',this)">✅ Compradores</button>
+      </div>
     </div>
     <div class="conv-list" id="conv-list">
       <div class="empty"><div class="empty-title">Cargando…</div></div>
@@ -99,13 +138,47 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
     <div class="empty">
       <div class="empty-icon">💬</div>
       <div class="empty-title">Selecciona un chat</div>
-      <div class="empty-sub">Elige una conversación de la lista</div>
+      <div class="empty-sub">Elige una conversación de la lista izquierda</div>
     </div>
   </div>
 </div>
 
 <script>
-let all = [], selI = null;
+let all = [], selI = null, activeFilter = 'todos';
+
+function segmentoBadge(tx) {
+  const t = (tx || '').toLowerCase();
+  if (t.includes('recompra'))           return '<span class="badge badge-recompra">Recompra</span>';
+  if (t.includes('comprador'))          return '<span class="badge badge-comprador">Comprador</span>';
+  if (t.includes('mayoreo'))            return '<span class="badge badge-mayoreo">Mayoreo</span>';
+  if (t.includes('carrito abandonado')) return '<span class="badge badge-carrito">Carrito</span>';
+  if (t.includes('solo cuenta'))        return '<span class="badge badge-solo-cuenta">Solo cuenta</span>';
+  if (t.includes('lead frío') || t.includes('lead frio')) return '<span class="badge badge-lead">Lead frío</span>';
+  return '';
+}
+
+function esEscalado(tx) {
+  return /ESCALAR_A_WIG|asesor te contactar|listo.*asesor|ahorita te conecto/i.test(tx || '');
+}
+
+function esMayoreo(tx) {
+  return /mayoreo|distribuidor|grandes? cantidad|reventa|por mayor/i.test(tx || '');
+}
+
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  filter();
+}
+
+function applyFilter(convs) {
+  if (activeFilter === 'todos')       return convs;
+  if (activeFilter === 'escalados')   return convs.filter(c => esEscalado(c.transcript));
+  if (activeFilter === 'mayoreo')     return convs.filter(c => esMayoreo(c.transcript));
+  if (activeFilter === 'compradores') return convs.filter(c => /comprador|recompra/i.test(c.transcript));
+  return convs;
+}
 
 async function loadData() {
   document.getElementById('conv-list').innerHTML = '<div class="empty"><div class="empty-title">Cargando…</div></div>';
@@ -114,71 +187,112 @@ async function loadData() {
     if (!r.ok) throw new Error('Error ' + r.status);
     all = await r.json();
     filter();
+    document.getElementById('counter').textContent = all.length + ' chats';
   } catch(e) {
-    document.getElementById('conv-list').innerHTML = `<div class="empty"><div class="empty-title">Error al cargar</div><div class="empty-sub">${e.message}</div></div>`;
+    document.getElementById('conv-list').innerHTML =
+      `<div class="empty"><div class="empty-title">Error al cargar</div><div class="empty-sub">${e.message}</div></div>`;
   }
 }
 
 function filter() {
   const q = document.getElementById('search').value.toLowerCase();
-  const r = q ? all.filter(c => (c.nombre||'').toLowerCase().includes(q) || (c.telefono||'').includes(q)) : all;
+  let r = q ? all.filter(c => (c.nombre||'').toLowerCase().includes(q) || (c.telefono||'').includes(q)) : all;
+  r = applyFilter(r);
   renderList(r);
 }
 
 function renderList(convs) {
   const el = document.getElementById('conv-list');
-  if (!convs.length) { el.innerHTML = '<div class="empty"><div class="empty-title">Sin resultados</div></div>'; return; }
-  el.innerHTML = convs.map((c,i) => `
-    <div class="conv-item ${selI===i?'sel':''}" onclick="openConv(${i},this)">
-      <div class="ci-top">
-        <span class="ci-name">${esc(c.nombre||'Sin nombre')}</span>
-        <span class="ci-date">${esc(c.fecha)}</span>
-      </div>
-      <div class="ci-phone">${esc(c.telefono)}</div>
-    </div>`).join('');
+  if (!convs.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-title">Sin resultados</div></div>';
+    return;
+  }
+  el.innerHTML = convs.map((c, i) => {
+    const escalado = esEscalado(c.transcript);
+    const mayoreo  = esMayoreo(c.transcript);
+    const segBadge = segmentoBadge(c.transcript);
+    const escBadge = escalado ? '<span class="badge badge-escalado">🚨 Escalado</span>' : '';
+    const mayBadge = mayoreo && !escalado ? '<span class="badge badge-mayoreo">💼 Mayoreo</span>' : '';
+    return `
+      <div class="conv-item ${selI===i?'sel':''}" onclick="openConv(${i},this)">
+        <div class="ci-top">
+          <span class="ci-name">${esc(c.nombre||'Sin nombre')}</span>
+          <span class="ci-date">${esc(c.fecha)}</span>
+        </div>
+        <div class="ci-phone">${esc(c.telefono)}</div>
+        <div class="ci-badges">${segBadge}${escBadge}${mayBadge}</div>
+      </div>`;
+  }).join('');
 }
 
 function openConv(i, el) {
   selI = i;
   document.querySelectorAll('.conv-item').forEach(x => x.classList.remove('sel'));
   el.classList.add('sel');
-  const c = all[i];
-  const msgs = parseTx(c.transcript||'');
-  const pr = document.getElementById('panel-right');
+  const c    = all[i];
+  const msgs = parseTx(c.transcript || '');
+  const pr   = document.getElementById('panel-right');
   pr.classList.add('open');
+  const escalInfo = detectarEscalacion(c.transcript || '');
+  const inicial   = (c.nombre || 'S').trim().charAt(0).toUpperCase();
   pr.innerHTML = `
     <div class="chat-header">
-      <div style="display:flex;align-items:center">
+      <div class="ch-left">
         <button class="back-btn" onclick="document.getElementById('panel-right').classList.remove('open')">← Volver</button>
+        <div class="ch-avatar">${esc(inicial)}</div>
         <div>
           <div class="ch-name">${esc(c.nombre||'Sin nombre')}</div>
-          <div class="ch-phone">${esc(c.telefono)} · ${esc(c.fecha)}</div>
+          <div class="ch-meta">${esc(c.telefono)} · ${esc(c.fecha)}</div>
         </div>
       </div>
+      <div class="ci-badges">${segmentoBadge(c.transcript)}</div>
     </div>
+    ${escalInfo ? `
+    <div style="padding:10px 20px 0">
+      <div class="escalation-banner">
+        <div class="esc-icon">🚨</div>
+        <div class="esc-text">
+          <div class="esc-label">ESCALADO A ASESOR</div>
+          <div>${esc(escalInfo)}</div>
+        </div>
+      </div>
+    </div>` : ''}
     <div class="chat-body" id="cb">
-      ${msgs.length ? msgs.map(m=>`
-        <div class="msg-row ${m.s}">
-          <div class="av ${m.s==='bot'?'b':'c'}">${m.s==='bot'?'B':'C'}</div>
-          <div class="bubble">${esc(m.t)}</div>
-        </div>`).join('') : '<div style="text-align:center;font-size:12px;color:var(--muted);padding:20px">Sin mensajes</div>'}
+      ${msgs.length
+        ? msgs.map(m => {
+            if (m.s === 'sys') return `<div class="sys-msg"><span>${esc(m.t)}</span></div>`;
+            return `
+              <div class="msg-row ${m.s}">
+                <div class="av ${m.s==='bot'?'b':'c'}">${m.s==='bot'?'B':'C'}</div>
+                <div class="bubble">${esc(m.t)}</div>
+              </div>`;
+          }).join('')
+        : '<div style="text-align:center;font-size:12px;color:var(--muted);padding:20px">Sin mensajes</div>'}
     </div>`;
-  setTimeout(()=>{ const cb=document.getElementById('cb'); if(cb) cb.scrollTop=cb.scrollHeight; },50);
+  setTimeout(() => { const cb = document.getElementById('cb'); if(cb) cb.scrollTop = cb.scrollHeight; }, 50);
+}
+
+function detectarEscalacion(tx) {
+  const m = tx.match(/Bot:\s*(Cliente\s+(?:quiere|necesita)[^\n]+)/i);
+  if (m) return m[1].trim();
+  return null;
 }
 
 function parseTx(raw) {
-  return raw.split(/\\n|\n/).map(l=>l.trim()).filter(Boolean).map(l=>{
-    if(/^[Bb]ot:/.test(l)) return {s:'bot', t:l.replace(/^[Bb]ot:\s*/,'')};
-    if(/^[Cc]liente:/.test(l)) return {s:'client', t:l.replace(/^[Cc]liente:\s*/,'')};
+  return raw.split(/\\n|\n/).map(l => l.trim()).filter(Boolean).map(l => {
+    if (/^[Bb]ot:/.test(l))     return { s: 'bot',    t: l.replace(/^[Bb]ot:\s*/, '') };
+    if (/^[Cc]liente:/.test(l)) return { s: 'client', t: l.replace(/^[Cc]liente:\s*/, '') };
+    if (/^\[inicio/.test(l))    return { s: 'sys',    t: 'Inicio de sesión' };
     return null;
   }).filter(Boolean);
 }
 
 function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
 }
 
 loadData();
+setInterval(loadData, 60000);
 </script>
 </body>
 </html>
