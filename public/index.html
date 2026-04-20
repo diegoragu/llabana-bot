@@ -279,12 +279,24 @@ function detectarEscalacion(tx) {
 }
 
 function parseTx(raw) {
-  return raw.split(/\\n|\n/).map(l => l.trim()).filter(Boolean).map(l => {
-    if (/^[Bb]ot:/.test(l))     return { s: 'bot',    t: l.replace(/^[Bb]ot:\s*/, '') };
-    if (/^[Cc]liente:/.test(l)) return { s: 'client', t: l.replace(/^[Cc]liente:\s*/, '') };
-    if (/^\[inicio/.test(l))    return { s: 'sys',    t: 'Inicio de sesión' };
-    return null;
-  }).filter(Boolean);
+  const lines = raw.split(/\\n|\n/).map(l => l.trim()).filter(Boolean);
+  const msgs = [];
+
+  for (const line of lines) {
+    if (/^[Bb]ot:/.test(line)) {
+      msgs.push({ s: 'bot', t: line.replace(/^[Bb]ot:\s*/, '') });
+    } else if (/^[Cc]liente:/.test(line)) {
+      msgs.push({ s: 'client', t: line.replace(/^[Cc]liente:\s*/, '') });
+    } else if (/^\[inicio/.test(line)) {
+      msgs.push({ s: 'sys', t: 'Inicio de sesión' });
+    } else if (msgs.length > 0 && msgs[msgs.length - 1].s === 'bot') {
+      // Línea sin prefijo que sigue a un mensaje de bot → agregar al mensaje anterior
+      msgs[msgs.length - 1].t += '\n' + line;
+    }
+    // Líneas sin prefijo después de cliente se descartan
+  }
+
+  return msgs;
 }
 
 function esc(s) {
