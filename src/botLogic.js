@@ -362,7 +362,7 @@ async function handleAskingMexico(phone, message, session) {
 
 const RESPUESTA_FLUJO = /^(s[ií],?|no,?|ok,?|claro,?|desde\s+\w+|estoy\s+en|soy\s+de|vengo\s+de)/i;
 
-const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|es\s+(saber|que|para|sobre)|para\s+saber|quiero\s+saber|quisiera|necesito\s+saber|me\s+gustar[ií]a|tiene\s+costo|tiene\s+precio|tiene\s+env[ií]o|cuanto\s+cuesta|si\s+tiene|si\s+manejan|de\s+el\s+estado|del\s+estado|en\s+el\s+estado)/i;
+const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|tiene[n]?\b|es\s+(saber|que|para|sobre|correcto|as[ií])|para\s+saber|quiero\s+saber|quisiera|necesito|me\s+gustar[ií]a|tiene\s+costo|tiene\s+precio|tiene\s+env[ií]o|cuanto\s+cuesta|si\s+tiene|si\s+manejan|de\s+el\s+estado|del\s+estado|en\s+el\s+estado|as[ií]\s+es|as[ií]\s+est[aá]|as[ií]\s+lo|correcto|exacto|ok\b|M[eé]xico|Quer[eé]taro|Oaxaca|Puebla|Jalisco|Veracruz|Chiapas|Guerrero|Sonora|Chihuahua|Sinaloa|Tamaulipas|Coahuila|Hidalgo|Tabasco|Campeche|Yucat[aá]n|Quintana)/i;
 
 async function handleAskingName(phone, message, session) {
   // Rechazar verbos de intención que no son nombres
@@ -378,18 +378,25 @@ async function handleAskingName(phone, message, session) {
     return '¿Me dices tu nombre? Por ejemplo: Juan o María 😊';
   }
 
-  // Extraer nombre de frases como "mi nombre es X", "soy X", "me llamo X"
+  // Extraer nombre de frases como "mi nombre es X", "soy X", "me llamo X", "Con X"
   const miNombreMatch = message.match(
-    /mi\s+nombre\s+es\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)/i
+    /mi\s+nombre\s+es\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ][\w\s]*)/i
   );
   if (miNombreMatch) {
-    message = miNombreMatch[1];
+    message = miNombreMatch[1].trim();
   } else {
     const soiMatch = message.match(
-      /(?:soy|me\s+llamo)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)/i
+      /(?:soy|me\s+llamo)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ][\w\s]*)/i
     );
     if (soiMatch) {
-      message = soiMatch[1];
+      message = soiMatch[1].trim();
+    } else {
+      const conMatch = message.match(
+        /^con\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ][\w\s]*)/i
+      );
+      if (conMatch) {
+        message = conMatch[1].trim();
+      }
     }
   }
 
@@ -657,24 +664,7 @@ async function handleWaitingForWig(phone, message, session) {
     return '¡Con gusto! En breve te contacta un asesor 🙌 Que tengas buen día 🌾';
   }
 
-  const esConsulta = message.trim().length > 8 || message.includes('?');
-  if (esConsulta) {
-    session.conversationHistory.push({ role: 'user', content: message });
-    let response;
-    try {
-      response = await claudeService.chat(session.conversationHistory, session.customer);
-    } catch {
-      response = 'En breve te contacta un asesor para ayudarte 🙌';
-    }
-    if (response.includes('ESCALAR_A_WIG')) {
-      return 'En breve te contacta un asesor 🙌';
-    }
-    session.conversationHistory.push({ role: 'assistant', content: response });
-    await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
-    return response;
-  }
-
-  return 'En breve te contacta un asesor 🙌';
+  return 'Ya avisamos a un asesor, en breve te contacta 🙌';
 }
 
 async function handleEscalated(phone, message, session) {
@@ -771,7 +761,15 @@ async function escalateWithResumen(phone, session, motivo) {
     tempData:  session.tempData,
   });
 
-  return `Antes de conectarte con un asesor, déjame confirmar tu solicitud:\n\n"${resumen}"\n\n¿Es correcto? 😊`;
+  // Limpiar prefijos internos antes de mostrar al cliente
+  const resumenLimpio = resumen
+    .replace(/^Perfil mayoreo\/negocio:\s*/i, '')
+    .replace(/^Cliente solicita asesor humano\s*/i, 'Hablar con un asesor')
+    .replace(/^Detectado por Claude\s*/i, '')
+    .replace(/^"+|"+$/g, '')
+    .trim();
+
+  return `Antes de conectarte con un asesor, déjame confirmar tu solicitud:\n\n"${resumenLimpio}"\n\n¿Es correcto? 😊`;
 }
 
 const CONFIRMA_PATTERNS = /\b(s[ií]|correcto|exacto|as[ií]\s*es|eso\s*es|ok|dale|claro|perfecto|confirmo|est[aá]\s*bien|de\s*acuerdo|va|listo|as[ií]|confirm|es\s*correcto|correcto\s*gracias|s[ií]\s*es\s*correcto|as[ií]\s*lo\s*quiero|as[ií]\s*me\s*gustar[ií]a)\b/i;
@@ -783,22 +781,16 @@ async function handleConfirmingEscalation(phone, message, session) {
                   'requiere atención de un asesor';
   const motivo  = session.tempData?.motivoEscalacion  || '';
 
-  if (CONFIRMA_PATTERNS.test(message.trim())) {
-    await notifyWig(phone, session, motivo, resumen);
-
-    if (session.customer?.rowIndex) {
-      sheetsService.updateOrderData(session.customer.rowIndex, {
-        notas: resumen,
-      }).catch(() => {});
-    }
-
-    await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-    const firstName = primerNombre(session.customer?.name || session.tempData?.name || '');
-    return firstName
-      ? `¡Listo, ${firstName}! 🙌 Un asesor te contactará en breve.`
-      : '¡Listo! 🙌 Un asesor te contactará en breve.';
+  // Si está esperando que el cliente corrija → usar el mensaje como nueva descripción
+  if (session.tempData?.esperandoCorreccion) {
+    const nuevaDescripcion = message.trim();
+    session.tempData.resumenEscalacion   = nuevaDescripcion;
+    session.tempData.esperandoCorreccion = false;
+    await sessionManager.updateSession(phone, { tempData: session.tempData });
+    return `Perfecto, queda así:\n\n"${nuevaDescripcion}"\n\n¿Lo confirmas? 😊`;
   }
 
+  // Corrección explícita → pedir nueva descripción
   if (CORRIGE_PATTERNS.test(message.trim())) {
     await sessionManager.updateSession(phone, {
       flowState: 'confirming_escalation',
@@ -807,30 +799,18 @@ async function handleConfirmingEscalation(phone, message, session) {
     return '¿Cómo lo describirías tú? Cuéntame en tus palabras 😊';
   }
 
-  if (session.tempData?.esperandoCorreccion) {
-    const nuevaDescripcion = message.trim();
-    session.tempData.resumenEscalacion  = nuevaDescripcion;
-    session.tempData.esperandoCorreccion = false;
-    await sessionManager.updateSession(phone, { tempData: session.tempData });
-    return `Perfecto, queda así:\n\n"${nuevaDescripcion}"\n\n¿Lo confirmas? 😊`;
+  // Todo lo demás (Sí, Si, correcto, emojis, mensajes sustanciales…) → confirmar y escalar
+  await notifyWig(phone, session, motivo, resumen);
+  if (session.customer?.rowIndex) {
+    sheetsService.updateOrderData(session.customer.rowIndex, {
+      notas: resumen,
+    }).catch(() => {});
   }
-
-  // Mensaje sustancial → confirmar implícitamente y escalar
-  if (message.trim().length > 10 || message.includes('?')) {
-    await notifyWig(phone, session, motivo, resumen);
-    if (session.customer?.rowIndex) {
-      sheetsService.updateOrderData(session.customer.rowIndex, {
-        notas: resumen,
-      }).catch(() => {});
-    }
-    await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-    const firstName = primerNombre(session.customer?.name || session.tempData?.name || '');
-    return firstName
-      ? `¡Listo, ${firstName}! 🙌 Un asesor te contactará en breve.`
-      : '¡Listo! 🙌 Un asesor te contactará en breve.';
-  }
-
-  return `Tu solicitud: "${resumen}" — ¿confirmas? (responde Sí o No)`;
+  await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+  const firstName = primerNombre(session.customer?.name || session.tempData?.name || '');
+  return firstName
+    ? `¡Listo, ${firstName}! 🙌 Un asesor te contactará en breve.`
+    : '¡Listo! 🙌 Un asesor te contactará en breve.';
 }
 
 // ── Notificación a asesor ─────────────────────────────────────────────────────
