@@ -272,6 +272,22 @@ async function handleMessage(phone, messageBody) {
 
 const registrandoTelefonos = new Set();
 
+// ── Extractor de nombre desde texto libre ─────────────────────────────────────
+
+function extraerNombreDelMensaje(mensaje) {
+  const p1 = mensaje.match(
+    /(?:mi\s+nombre\s+es|me\s+llamo|soy)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)/i
+  );
+  if (p1) return p1[1].trim();
+
+  const p2 = mensaje.match(
+    /^con\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)/i
+  );
+  if (p2) return p2[1].trim();
+
+  return null;
+}
+
 // ── Filtro México ─────────────────────────────────────────────────────────────
 
 async function handleAskingMexico(phone, message, session) {
@@ -354,6 +370,26 @@ async function handleAskingMexico(phone, message, session) {
     registrandoTelefonos.delete(phone);
   }
 
+  // Intentar extraer nombre del mismo mensaje de confirmación de México
+  const nombreDetectado = extraerNombreDelMensaje(message);
+  const nombreLimpio = nombreDetectado ? sheetsService.limpiarNombre(nombreDetectado) : null;
+
+  if (nombreLimpio) {
+    if (rowIndex) {
+      sheetsService.updateOrderData(rowIndex, { name: nombreLimpio }).catch(() => {});
+    }
+    await sessionManager.updateSession(phone, {
+      flowState: 'active',
+      tempData:  { ...session.tempData, name: nombreLimpio, nameAttempts: 0 },
+    });
+    const first = primerNombre(nombreLimpio);
+    return pick([
+      `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`,
+      `¡Qué bueno que nos escribes, ${first}! ¿En qué te ayudo?`,
+      `Gracias ${first} 🌾 ¿Qué necesitas hoy?`,
+    ]);
+  }
+
   await sessionManager.updateSession(phone, { flowState: 'asking_name' });
   return '¿Con quién tengo el gusto? 😊';
 }
@@ -362,7 +398,7 @@ async function handleAskingMexico(phone, message, session) {
 
 const RESPUESTA_FLUJO = /^(s[ií],?|no,?|ok,?|claro,?|desde\s+\w+|estoy\s+en|soy\s+de|vengo\s+de)/i;
 
-const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|tiene[n]?\b|es\s+(saber|que|para|sobre|correcto|as[ií])|para\s+saber|quiero\s+saber|quisiera|necesito|me\s+gustar[ií]a|tiene\s+costo|tiene\s+precio|tiene\s+env[ií]o|cuanto\s+cuesta|si\s+tiene|si\s+manejan|de\s+el\s+estado|del\s+estado|en\s+el\s+estado|as[ií]\s+es|as[ií]\s+est[aá]|as[ií]\s+lo|correcto|exacto|ok\b|M[eé]xico|Quer[eé]taro|Oaxaca|Puebla|Jalisco|Veracruz|Chiapas|Guerrero|Sonora|Chihuahua|Sinaloa|Tamaulipas|Coahuila|Hidalgo|Tabasco|Campeche|Yucat[aá]n|Quintana)/i;
+const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|tiene[n]?(\s|$)|es\s+(saber|que|para|sobre|correcto|as[ií])|para\s+saber|quiero\s+saber|quisiera|necesito|me\s+gustar[ií]a|tiene\s+costo|tiene\s+precio|tiene\s+env[ií]o|cuanto\s+cuesta|si\s+tiene|si\s+manejan|de\s+el\s+estado|del\s+estado|en\s+el\s+estado|as[ií](\s+(es|est[aá]|lo)|$)|correcto|exacto|ok(\s|$)|M[eé]xico|Quer[eé]taro|Oaxaca|Puebla|Jalisco|Veracruz|Chiapas|Guerrero|Sonora|Chihuahua|Sinaloa|Tamaulipas|Coahuila|Hidalgo|Tabasco|Campeche|Yucat[aá]n|Quintana\s+Roo|Monterrey|Guadalajara|CDMX|Ciudad\s+de\s+M[eé]xico)/i;
 
 async function handleAskingName(phone, message, session) {
   // Rechazar verbos de intención que no son nombres
@@ -379,26 +415,8 @@ async function handleAskingName(phone, message, session) {
   }
 
   // Extraer nombre de frases como "mi nombre es X", "soy X", "me llamo X", "Con X"
-  const miNombreMatch = message.match(
-    /mi\s+nombre\s+es\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ][\w\s]*)/i
-  );
-  if (miNombreMatch) {
-    message = miNombreMatch[1].trim();
-  } else {
-    const soiMatch = message.match(
-      /(?:soy|me\s+llamo)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ][\w\s]*)/i
-    );
-    if (soiMatch) {
-      message = soiMatch[1].trim();
-    } else {
-      const conMatch = message.match(
-        /^con\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ][\w\s]*)/i
-      );
-      if (conMatch) {
-        message = conMatch[1].trim();
-      }
-    }
-  }
+  const extraido = extraerNombreDelMensaje(message);
+  if (extraido) message = extraido;
 
   // Filtrar respuestas de contexto que no son nombres ("Sí", "Ok", "Soy de Puebla", etc.)
   if (RESPUESTA_FLUJO.test(message.trim())) {
@@ -416,7 +434,14 @@ async function handleAskingName(phone, message, session) {
     }
   }
 
-  const nombre = sheetsService.limpiarNombre(message);
+  // Quitar emojis antes de procesar
+  const mensajeSinEmojis = message
+    .replace(/[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
+    .trim();
+
+  // Intentar extraer nombre de frases de contexto (fallback si no se extrajo antes)
+  const nombreExtraido = extraerNombreDelMensaje(mensajeSinEmojis) || mensajeSinEmojis;
+  const nombre = sheetsService.limpiarNombre(nombreExtraido);
   const attempts = session.tempData?.nameAttempts ?? 0;
 
   if (nombre) {
