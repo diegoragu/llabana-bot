@@ -58,13 +58,9 @@ const OUTSIDE_MEXICO_PATTERNS = [
 ];
 
 const ESCALATION_PROFILE_PATTERNS = [
-  /grandes?\s*cantidad/i, /mayoreo/i, /reventa/i,
-  /revendedor/i, /distribuidor/i, /por\s*mayor/i, /\bal\s*mayor\b/i,
-  /emprender/i, /negocio/i, /\bnegoci/i,
-  /distribuir/i, /distribuc/i,
-  /punto\s*de\s*venta/i,
-  /tienda\s*propia/i, /poner\s*(un\s*)?(negocio|tienda)/i,
-  /vender\s*alimento/i, /comercializar/i,
+  /distribuidor/i,
+  /revendedor/i,
+  /grandes?\s*cantidades?\s+(?:de\s+)?(?:tons?|toneladas?|cami[oó]n)/i,
 ];
 
 const HUMAN_REQUEST_PATTERNS = [
@@ -581,6 +577,31 @@ async function handleActive(phone, message, session) {
       return firstName
         ? `¡Listo, ${firstName}! 😊 En breve te contacta un asesor por este WhatsApp.`
         : '¡Listo! 😊 En breve te contacta un asesor por este WhatsApp.';
+    } else {
+      // Zona nacional: confirmar paquetería + responder con Claude
+      let claudeResp;
+      try {
+        claudeResp = await claudeService.chat(
+          session.conversationHistory,
+          session.customer,
+          message
+        );
+      } catch (err) {
+        console.error('claudeService.chat error (CP nacional):', err.message);
+      }
+
+      if (claudeResp && claudeResp.includes('ESCALAR_A_WIG')) {
+        return escalateWithResumen(phone, session, 'Detectado por Claude');
+      }
+
+      const respuesta = claudeResp
+        ? `Te llegamos por paquetería 📦\n\n${claudeResp}`
+        : 'Te llegamos por paquetería a todo México 📦 Haz tu pedido en llabanaenlinea.com 😊';
+
+      session.conversationHistory.push({ role: 'assistant', content: respuesta });
+      await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+      sheetsService.appendConversationLog(phone, message, respuesta).catch(() => {});
+      return respuesta;
     }
   }
 
