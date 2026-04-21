@@ -258,6 +258,7 @@ async function handleMessage(phone, messageBody) {
     case 'escalated':        return handleEscalated(phone, messageBody, session);
     case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
     case 'confirming_escalation':   return handleConfirmingEscalation(phone, messageBody, session);
+    case 'out_of_coverage':         return 'Con gusto te ayudamos cuando estés en México 🌾';
     default:
       await sessionManager.deleteSession(phone);
       return 'Algo salió mal. Escríbeme de nuevo.';
@@ -288,7 +289,7 @@ function extraerNombreDelMensaje(mensaje) {
 
 async function handleAskingMexico(phone, message, session) {
   if (isOutsideMexico(message)) {
-    await sessionManager.deleteSession(phone);
+    await sessionManager.updateSession(phone, { flowState: 'out_of_coverage' });
     return OUT_OF_COVERAGE_MSG;
   }
 
