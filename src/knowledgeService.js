@@ -24,6 +24,10 @@ let _prodCacheTime = null;
 const KB_CACHE_TTL   = 30 * 60 * 1000; // FAQs: 30 min (cambia poco)
 const PROD_CACHE_TTL =  5 * 60 * 1000; // Productos: 5 min (cambia seguido)
 
+function normalizeText(val) {
+  return (val || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 /**
  * Lee la pestaña "6 FAQs" completa y retorna como texto formateado.
  * Formato esperado: columna A = sección, columna B = descripción.
@@ -74,40 +78,50 @@ async function getProductosPorEspecie(query) {
       range: `${SHEET_PRODUCTOS}!A:L`,
     });
     const rows = (res.data.values || []).slice(1);
-    const qNorm = query.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-    const normalize = (val) => (val || '').toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    // Normalizar query y dividir en palabras individuales (>2 chars)
+    const qNorm = normalizeText(query);
+    const qPalabras = qNorm.split(/\s+/).filter(w => w.length > 2);
 
     let relevantes = rows.filter(r => {
-      const producto = normalize(r[1]);  // Col B: Producto
-      const especie  = normalize(r[2]);  // Col C: Especie
-      const marca    = normalize(r[3]);  // Col D: Marca
-      const usos     = normalize(r[7]);  // Col H: Usos
-      const etapa    = normalize(r[8]);  // Col I: Etapa
-      const keywords = normalize(r[10]); // Col K: Palabras clave
+      const producto = normalizeText(r[1]  || '');
+      const especie  = normalizeText(r[2]  || '');
+      const marca    = normalizeText(r[3]  || '');
+      const usos     = normalizeText(r[7]  || '');
+      const etapa    = normalizeText(r[8]  || '');
+      const keywords = normalizeText(r[10] || '');
 
-      return producto.includes(qNorm) ||
-             (producto && qNorm.includes(producto)) ||
-             especie.includes(qNorm)  ||
-             (especie && qNorm.includes(especie))   ||
-             marca.includes(qNorm)    ||
-             (marca && qNorm.includes(marca))       ||
-             keywords.split(',').some(k => {
-               const kn = normalize(k).trim();
-               return kn && (kn.includes(qNorm) || qNorm.includes(kn));
-             }) ||
-             usos.includes(qNorm) ||
-             etapa.includes(qNorm);
+      // Texto completo del producto para buscar en él
+      const textoCompleto = `${producto} ${especie} ${marca} ${usos} ${etapa} ${keywords}`;
+
+      // Match 1: query completo en algún campo (búsqueda exacta)
+      if (
+        producto.includes(qNorm) || especie.includes(qNorm) ||
+        marca.includes(qNorm)    || keywords.includes(qNorm) ||
+        usos.includes(qNorm)     || etapa.includes(qNorm)
+      ) return true;
+
+      // Match 2: TODAS las palabras del query aparecen en el texto completo
+      // Permite "black mamba" → encontrar "super breed black mamba"
+      if (qPalabras.length > 0 && qPalabras.every(p => textoCompleto.includes(p))) {
+        return true;
+      }
+
+      // Match 3: al menos la MITAD de las palabras hacen match (queries de 3+)
+      if (qPalabras.length >= 3) {
+        const matches = qPalabras.filter(p => textoCompleto.includes(p));
+        if (matches.length >= Math.ceil(qPalabras.length / 2)) return true;
+      }
+
+      return false;
     }).slice(0, 4);
 
-    // Fallback: buscar por cada palabra del query por separado
-    if (relevantes.length === 0) {
-      const palabras = qNorm.split(/\s+/).filter(p => p.length > 3);
+    // Fallback: al menos UNA palabra del query hace match
+    if (relevantes.length === 0 && qPalabras.length > 0) {
       relevantes = rows.filter(r => {
-        const texto = [r[1], r[2], r[3], r[7], r[8], r[10]].map(normalize).join(' ');
-        return palabras.some(p => texto.includes(p));
+        const textoCompleto = normalizeText(
+          `${r[1]||''} ${r[2]||''} ${r[3]||''} ${r[7]||''} ${r[8]||''} ${r[10]||''}`
+        );
+        return qPalabras.some(p => textoCompleto.includes(p));
       }).slice(0, 4);
     }
 
