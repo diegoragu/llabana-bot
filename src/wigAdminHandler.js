@@ -163,11 +163,7 @@ async function isWigCommand(from, body) {
   if (!wigNumber) return false;
   const fromNorm = from.replace(/\D/g, '').slice(-10);
   const wigNorm  = wigNumber.replace(/\D/g, '').slice(-10);
-  const esComando = /^\/\w/.test((body || '').trim());
-
-  console.log(`🔍 [WIG-CHECK] from=${fromNorm} | wig=${wigNorm} | match=${fromNorm===wigNorm} | esComando=${esComando} | body="${body?.substring(0,30)}"`);
-
-  return fromNorm === wigNorm && esComando;
+  return fromNorm === wigNorm && /^\/\w/.test((body || '').trim());
 }
 
 module.exports = { handleWigCommand, isWigCommand };
