@@ -7,6 +7,8 @@ const shopifyWebhookHandler = require('./shopifyWebhookHandler');
 const { getTranscripts } = require('./transcriptService');
 const { invalidateCache } = require('./knowledgeService');
 const { runFollowUps }   = require('./followUpService');
+const colaEscalaciones   = require('./colaEscalaciones');
+const { getRedisClient } = require('./sessionManager');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -78,6 +80,10 @@ app.listen(PORT, () => {
   console.log(`🐾 LlabanaBot corriendo en puerto ${PORT}`);
   console.log(`📱 WhatsApp: POST /webhook/whatsapp`);
   console.log(`🛍️  Shopify:  POST /webhook/shopify`);
+
+  // Pasar cliente Redis a la cola de escalaciones
+  colaEscalaciones.setRedis(getRedisClient());
+  console.log('📥 Cola de escalaciones fuera de horario activa');
 
   // Cron de seguimientos — corre cada 15 minutos
   setInterval(async () => {

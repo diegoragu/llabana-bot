@@ -1,7 +1,11 @@
-const sheetsService  = require('./sheetsService');
-const sessionManager = require('./sessionManager');
+const sheetsService    = require('./sheetsService');
+const sessionManager   = require('./sessionManager');
+const colaEscalaciones = require('./colaEscalaciones');
 
 const AYUDA = `*Comandos Llabana Bot* 🤖
+
+*/pendientes* (o "Escalaciones pendientes")
+→ Ver clientes que escribieron fuera de horario
 
 */reparto* +521XXXXXXXXXX
 → Cliente compró, se entrega por reparto
@@ -13,12 +17,7 @@ const AYUDA = `*Comandos Llabana Bot* 🤖
 → Cliente no contestó
 
 */ayuda*
-→ Ver esta lista
-
-Ejemplos:
-/reparto +5215512345678
-/sucursal +5215512345678 Ecatepec
-/nocontesta +5215512345678`;
+→ Ver esta lista`;
 
 function normalizePhoneForSearch(raw) {
   let n = (raw || '').replace(/\D/g, '');
@@ -30,6 +29,29 @@ function normalizePhoneForSearch(raw) {
 
 async function handleWigCommand(body) {
   const texto = (body || '').trim();
+
+  // Escalaciones pendientes
+  if (/^(\/pendientes?|escalaciones?\s+pendientes?)$/i.test(texto)) {
+    const pendientes = await colaEscalaciones.obtenerYLimpiarEscalaciones();
+
+    if (pendientes.length === 0) {
+      return '✅ No hay escalaciones pendientes por el momento.';
+    }
+
+    const EMOJIS = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+
+    const lista = pendientes.map((p, i) => {
+      const emoji = EMOJIS[i] || `${i + 1}.`;
+      const nom   = p.nombre && p.nombre !== 'Sin nombre' ? `*${p.nombre}*` : '*Sin nombre*';
+      const tel   = (p.phone || '').replace('whatsapp:', '') || 'N/D';
+      const res   = p.resumen || 'Sin descripción';
+      const fecha = p.fecha   || 'Fecha desconocida';
+      return `${emoji} ${nom} | ${tel}\n   📝 ${res}\n   🕐 ${fecha}`;
+    }).join('\n\n');
+
+    console.log(`🔧 [WIG-ADMIN] Escalaciones enviadas a Wig: ${pendientes.length}`);
+    return `📋 *Escalaciones pendientes — ${pendientes.length} cliente${pendientes.length > 1 ? 's' : ''}*\n\n${lista}\n\n_Lista borrada. Estos clientes esperan tu contacto._`;
+  }
 
   // Ayuda
   if (/^\/ayuda$/i.test(texto)) {

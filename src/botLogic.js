@@ -11,11 +11,13 @@
  * Nombre y CP se capturan naturalmente dentro de la conversación activa.
  */
 
-const sessionManager = require('./sessionManager');
-const sheetsService  = require('./sheetsService');
-const claudeService  = require('./claudeService');
-const twilioService  = require('./twilioService');
-const shopifyService = require('./shopifyService');
+const sessionManager    = require('./sessionManager');
+const sheetsService     = require('./sheetsService');
+const claudeService     = require('./claudeService');
+const twilioService     = require('./twilioService');
+const shopifyService    = require('./shopifyService');
+const horarioService    = require('./horarioService');
+const colaEscalaciones  = require('./colaEscalaciones');
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -313,13 +315,18 @@ async function handleAskingMexico(phone, message, session) {
   }
 
   if (!phone.startsWith('whatsapp:+52')) {
-    await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
     // Solo notificar si viene de un link de tracking (cliente real interesado)
     // Números extranjeros que llegan directo generalmente son spam o error
     if (session.tempData?.entryPoint && session.tempData.entryPoint !== 'Directo') {
-      await notifyWig(phone, session,
+      const { fueraHorario } = await notifyWig(phone, session,
         `Número extranjero via ${session.tempData.entryPoint}: ${phone}`,
         'Cliente con número extranjero');
+      await sessionManager.updateSession(phone, {
+        flowState: fueraHorario ? 'active' : 'waiting_for_wig',
+        ...(fueraHorario ? { tempData: { ...session.tempData, escalacionPendiente: true } } : {}),
+      });
+    } else {
+      await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
     }
     return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor.';
   }
@@ -399,15 +406,25 @@ async function handleAskingMexico(phone, message, session) {
       phone, state: stateDetectado, rowIndex: localRowIndex,
       channel: 'paqueteria', channelDetail: 'Nacional', segmento: 'Lead frío',
     };
-    await sessionManager.updateSession(phone, {
-      flowState: 'waiting_for_wig',
-      customer:  customerLocal,
-    });
+    await sessionManager.updateSession(phone, { customer: customerLocal });
     const sessionLocal = await sessionManager.getSession(phone);
-    await notifyWig(phone, sessionLocal,
+    const { fueraHorario: fueraH2 } = await notifyWig(
+      phone,
+      sessionLocal || { ...session, customer: customerLocal },
       `Zona local detectada por texto: "${message.substring(0, 80)}"`,
-      stateDetectado);
+      stateDetectado
+    );
 
+    if (fueraH2) {
+      await sessionManager.updateSession(phone, {
+        flowState: 'active',
+        tempData:  { ...session.tempData, escalacionPendiente: true },
+      });
+      const msgs = horarioService.mensajeFueraHorario();
+      return msgs[Math.floor(Math.random() * msgs.length)];
+    }
+
+    await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
     return pick([
       '¡Qué bueno! 😊 Un asesor de Llabana te contactará en breve por este WhatsApp.',
       '¡Perfecto! 🙌 En breve te contacta un asesor directamente.',
@@ -674,15 +691,27 @@ async function handleActive(phone, message, session) {
 
     if (isLocal) {
       const zone = cpIsCDMX(cp) ? 'CDMX' : 'Estado de México';
-      await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-      await notifyWig(phone, { ...session, customer: session.customer },
+      const { fueraHorario: fueraH3 } = await notifyWig(
+        phone, { ...session, customer: session.customer },
         `Zona local (${zone} / CP: ${cp})`,
-        `Cliente de ${zone} requiere atención personalizada`);
+        `Cliente de ${zone} requiere atención personalizada`
+      );
       if (session.customer?.rowIndex) {
         sheetsService.updateOrderData(session.customer.rowIndex, {
           notas: `Cliente de ${zone} — atención por asesor`,
         }).catch(() => {});
       }
+
+      if (fueraH3) {
+        await sessionManager.updateSession(phone, {
+          flowState: 'active',
+          tempData:  { ...session.tempData, escalacionPendiente: true },
+        });
+        const msgs = horarioService.mensajeFueraHorario();
+        return msgs[Math.floor(Math.random() * msgs.length)];
+      }
+
+      await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
       const firstName = primerNombre(session.customer?.name || '');
       return firstName
         ? `¡Listo, ${firstName}! 😊 En breve te contacta un asesor por este WhatsApp.`
@@ -992,12 +1021,22 @@ async function handleConfirmingEscalation(phone, message, session) {
   }
 
   // Todo lo demás (Sí, Si, correcto, emojis, mensajes sustanciales…) → confirmar y escalar
-  await notifyWig(phone, session, motivo, resumen);
+  const { fueraHorario: fueraH4 } = await notifyWig(phone, session, motivo, resumen);
   if (session.customer?.rowIndex) {
     sheetsService.updateOrderData(session.customer.rowIndex, {
       notas: resumen,
     }).catch(() => {});
   }
+
+  if (fueraH4) {
+    await sessionManager.updateSession(phone, {
+      flowState: 'active',
+      tempData:  { ...session.tempData, escalacionPendiente: true },
+    });
+    const msgs = horarioService.mensajeFueraHorario();
+    return msgs[Math.floor(Math.random() * msgs.length)];
+  }
+
   await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
   const firstName = primerNombre(session.customer?.name || session.tempData?.name || '');
   return firstName
@@ -1011,7 +1050,7 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
   const wigNumber = process.env.WIG_WHATSAPP_NUMBER;
   if (!wigNumber) {
     console.warn('WIG_WHATSAPP_NUMBER no configurado.');
-    return;
+    return { fueraHorario: false };
   }
 
   const customer   = session.customer || {};
@@ -1021,9 +1060,24 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
     ? history.map(m => `${m.role === 'user' ? '👤' : '🤖'}: ${m.content}`).join('\n')
     : '(sin historial previo)';
 
+  const nombre = customer.name || tempData.name || 'Sin nombre';
+
+  // ── Verificar horario ──────────────────────────────────────
+  if (!horarioService.estaEnHorario()) {
+    await colaEscalaciones.agregarEscalacion({
+      phone,
+      nombre,
+      resumen: resumen || motivo,
+      timestamp: Date.now(),
+    });
+    console.log(`📥 [COLA] Fuera de horario — escalación de ${nombre} guardada para después`);
+    return { fueraHorario: true };
+  }
+
+  // ── Dentro de horario — notificar normal ───────────────────
   const msg =
     `🚨 *NUEVA SOLICITUD*\n\n` +
-    `👤 *${customer.name || tempData.name || 'Sin nombre'}*\n` +
+    `👤 *${nombre}*\n` +
     `📱 ${phone.replace('whatsapp:', '')}\n` +
     `📍 ${customer.city || tempData.city || 'N/D'}${customer.state ? ', ' + customer.state : ''}\n\n` +
     `📋 *Solicitud:* ${resumen || motivo}\n\n` +
@@ -1034,8 +1088,10 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
   try {
     const result = await twilioService.sendMessage(wigNumber, msg);
     console.log(`📲 Wig notificado | sid: ${result.sid} | status: ${result.status} | errorCode: ${result.errorCode ?? 'none'} | errorMsg: ${result.errorMessage ?? 'none'}`);
+    return { fueraHorario: false };
   } catch (err) {
     console.error(`❌ Error notificando a Wig | code: ${err.code} | status: ${err.status} | msg: ${err.message} | moreInfo: ${err.moreInfo}`);
+    return { fueraHorario: false };
   }
 }
 
