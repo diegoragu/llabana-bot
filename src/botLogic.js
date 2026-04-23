@@ -290,6 +290,13 @@ function extraerNombreDelMensaje(mensaje) {
   return null;
 }
 
+// ── Detector de zona local por texto ─────────────────────────────────────────
+
+function mencionaZonaLocal(texto) {
+  return /\b(estado\s+de\s+m[eé]xico|edomex|edo\.?\s*mex|ecatepec|toluca|neza(hualcoyotl)?|naucalpan|tlalnepantla|chimalhuacan|texcoco|chalco|ciudad\s+de\s+m[eé]xico|cdmx|df|distrito\s+federal|iztapalapa|coyoac[aá]n|xochimilco|tlalpan|azcapotzalco|gustavo\s+a|venustiano\s+carranza|miguel\s+hidalgo|benito\s+ju[aá]rez|cuauht[eé]moc|tlahuac|magdalena\s+contreras|cuajimalpa|milpa\s+alta)\b/i
+    .test(texto);
+}
+
 // ── Filtro México ─────────────────────────────────────────────────────────────
 
 async function handleAskingMexico(phone, message, session) {
@@ -308,6 +315,47 @@ async function handleAskingMexico(phone, message, session) {
         'Cliente con número extranjero');
     }
     return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor.';
+  }
+
+  // Detectar CDMX/Edomex mencionado en texto antes de registrar
+  if (mencionaZonaLocal(message)) {
+    const stateDetectado = /estado\s+de\s+m[eé]xico|edomex|edo\.?\s*mex|ecatepec|toluca|neza|naucalpan|tlalnepantla|chimalhuacan|texcoco|chalco/i.test(message)
+      ? 'Estado de México' : 'Ciudad de México';
+
+    let localRowIndex = null;
+    try {
+      const yaExisteLocal = await sheetsService.findCustomer(phone);
+      if (yaExisteLocal) {
+        localRowIndex = yaExisteLocal.rowIndex;
+        sheetsService.updateOrderData(localRowIndex, { state: stateDetectado }).catch(() => {});
+      } else {
+        localRowIndex = await sheetsService.registerCustomer({
+          phone, name: '', email: '', state: stateDetectado, city: '', cp: '',
+          channel: 'paqueteria', channelDetail: 'Nacional', segmento: 'Lead frío',
+          aceWa: 'SI', entryPoint: session.tempData?.entryPoint || 'Directo', origen: 'WhatsApp',
+        });
+      }
+    } catch (err) {
+      console.error('Error registrando cliente zona local por texto:', err.message);
+    }
+
+    const customerLocal = {
+      phone, state: stateDetectado, rowIndex: localRowIndex,
+      channel: 'paqueteria', channelDetail: 'Nacional', segmento: 'Lead frío',
+    };
+    await sessionManager.updateSession(phone, {
+      flowState: 'waiting_for_wig',
+      customer:  customerLocal,
+    });
+    const sessionLocal = await sessionManager.getSession(phone);
+    await notifyWig(phone, sessionLocal,
+      `Zona local detectada por texto: "${message.substring(0, 80)}"`,
+      stateDetectado);
+
+    return pick([
+      '¡Qué bueno! 😊 Un asesor de Llabana te contactará en breve por este WhatsApp.',
+      '¡Perfecto! 🙌 En breve te contacta un asesor directamente.',
+    ]);
   }
 
   // México confirmado → registrar lead (o reusar si ya existe) y pedir nombre
