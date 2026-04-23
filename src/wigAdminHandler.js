@@ -21,10 +21,18 @@ const AYUDA = `*Comandos Llabana Bot* 🤖
 
 function normalizePhoneForSearch(raw) {
   let n = (raw || '').replace(/\D/g, '');
+
+  // Normalizar a 10 dígitos primero
   if (n.startsWith('521') && n.length === 13) n = n.substring(3);
   else if (n.startsWith('52') && n.length === 12) n = n.substring(2);
-  if (n.length === 10) return `whatsapp:+52${n}`;
-  return null;
+
+  if (n.length !== 10) {
+    console.log(`⚠️ [WIG] Número inválido: ${raw}`);
+    return null;
+  }
+
+  // Siempre retornar con 521 para ser consistente con Twilio
+  return `whatsapp:+521${n}`;
 }
 
 async function handleWigCommand(body) {
