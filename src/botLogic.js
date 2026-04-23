@@ -1092,9 +1092,10 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
   }
 
   // ── Dentro de horario — notificar normal ───────────────────
+  const telMostrar = phone.replace('whatsapp:', '');
   const msg =
     `🚨 *NUEVA SOLICITUD*\n\n` +
-    `👤 *${nombre}* | ${phone.replace('whatsapp:', '')}\n` +
+    `👤 *${nombre}* | ${telMostrar}\n` +
     (ubicacion ? `📍 ${ubicacion}\n` : '') +
     (resumenLimpio ? `📝 ${resumenLimpio}` : '');
 

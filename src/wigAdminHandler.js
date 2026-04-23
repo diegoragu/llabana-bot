@@ -20,18 +20,19 @@ const AYUDA = `*Comandos Llabana Bot* 🤖
 → Ver esta lista`;
 
 function normalizePhoneForSearch(raw) {
+  // Quitar todo excepto dígitos
   let n = (raw || '').replace(/\D/g, '');
 
-  // Normalizar a 10 dígitos primero
+  // Normalizar a 10 dígitos
   if (n.startsWith('521') && n.length === 13) n = n.substring(3);
   else if (n.startsWith('52') && n.length === 12) n = n.substring(2);
 
   if (n.length !== 10) {
-    console.log(`⚠️ [WIG] Número inválido: ${raw}`);
+    console.log(`⚠️ [WIG] Número inválido: ${raw} → ${n}`);
     return null;
   }
 
-  // Siempre retornar con 521 para ser consistente con Twilio
+  // Formato interno con 521 (como llega de Twilio y está en Sheets)
   return `whatsapp:+521${n}`;
 }
 
