@@ -1060,14 +1060,31 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
     ? history.map(m => `${m.role === 'user' ? '👤' : '🤖'}: ${m.content}`).join('\n')
     : '(sin historial previo)';
 
-  const nombre = customer.name || tempData.name || 'Sin nombre';
+  const nombre   = customer.name  || tempData.name  || 'Sin nombre';
+  const estado   = customer.state || tempData.state || '';
+  const ciudad   = customer.city  || tempData.city  || '';
+  const cp       = customer.cp    || tempData.cp    || '';
+  const resumenF = tempData.resumenEscalacion || motivo || '';
+
+  // Limpiar prefijos internos del resumen
+  const resumenLimpio = resumenF
+    .replace(/^Perfil mayoreo\/negocio:\s*/i, '')
+    .replace(/^Cliente solicita asesor humano\s*/i, '')
+    .replace(/^Detectado por Claude\s*/i, '')
+    .replace(/^Zona local[^:]*:\s*/i, '')
+    .replace(/^"+|"+$/g, '')
+    .trim();
+
+  // Ubicación en una línea
+  const ubicacion = [estado, ciudad, cp ? `CP: ${cp}` : '']
+    .filter(Boolean).join(' | ');
 
   // ── Verificar horario ──────────────────────────────────────
   if (!horarioService.estaEnHorario()) {
     await colaEscalaciones.agregarEscalacion({
       phone,
       nombre,
-      resumen: resumen || motivo,
+      resumen: resumenLimpio || motivo,
       timestamp: Date.now(),
     });
     console.log(`📥 [COLA] Fuera de horario — escalación de ${nombre} guardada para después`);
@@ -1077,12 +1094,9 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
   // ── Dentro de horario — notificar normal ───────────────────
   const msg =
     `🚨 *NUEVA SOLICITUD*\n\n` +
-    `👤 *${nombre}*\n` +
-    `📱 ${phone.replace('whatsapp:', '')}\n` +
-    `📍 ${customer.city || tempData.city || 'N/D'}${customer.state ? ', ' + customer.state : ''}\n\n` +
-    `📋 *Solicitud:* ${resumen || motivo}\n\n` +
-    `📌 *Motivo:* ${motivo}\n\n` +
-    `*Conversación reciente:*\n${transcript}`;
+    `👤 *${nombre}* | ${phone.replace('whatsapp:', '')}\n` +
+    (ubicacion ? `📍 ${ubicacion}\n` : '') +
+    (resumenLimpio ? `📝 ${resumenLimpio}` : '');
 
   console.log(`📤 Intentando notificar a Wig | to: ${wigNumber} | motivo: ${motivo}`);
   try {
