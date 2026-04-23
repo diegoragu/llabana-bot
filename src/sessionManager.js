@@ -141,4 +141,26 @@ async function getActiveSessionCount() {
   return memorySessions.size;
 }
 
-module.exports = { getSession, createSession, updateSession, deleteSession, getActiveSessionCount };
+async function getAllActiveSessions() {
+  if (redis) {
+    try {
+      const keys = await redis.keys('session:*');
+      const entries = [];
+      for (const key of keys) {
+        const data = await redis.get(key);
+        const session = deserialize(data);
+        if (session) {
+          const phone = key.replace('session:', '');
+          entries.push([phone, session]);
+        }
+      }
+      return entries;
+    } catch (err) {
+      console.error('Redis getAllActiveSessions error:', err.message);
+      return [];
+    }
+  }
+  return [...memorySessions.entries()];
+}
+
+module.exports = { getSession, createSession, updateSession, deleteSession, getActiveSessionCount, getAllActiveSessions };

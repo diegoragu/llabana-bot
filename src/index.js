@@ -6,6 +6,7 @@ const webhookHandler = require('./webhookHandler');
 const shopifyWebhookHandler = require('./shopifyWebhookHandler');
 const { getTranscripts } = require('./transcriptService');
 const { invalidateCache } = require('./knowledgeService');
+const { runFollowUps }   = require('./followUpService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -77,6 +78,12 @@ app.listen(PORT, () => {
   console.log(`🐾 LlabanaBot corriendo en puerto ${PORT}`);
   console.log(`📱 WhatsApp: POST /webhook/whatsapp`);
   console.log(`🛍️  Shopify:  POST /webhook/shopify`);
+
+  // Cron de seguimientos — corre cada 15 minutos
+  setInterval(async () => {
+    await runFollowUps();
+  }, 15 * 60 * 1000);
+  console.log('⏰ Follow-up service activo — revisa cada 15 min');
 });
 
 module.exports = app;
