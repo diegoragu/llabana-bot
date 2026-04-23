@@ -123,8 +123,8 @@ async function getSheets() {
  */
 function normalizePhone(phone) {
   let n = (phone || '').replace('whatsapp:', '').replace(/\D/g, '');
-  if (n.startsWith('521') && n.length === 13) n = n.substring(2);
-  else if (n.startsWith('52') && n.length === 12) n = n.substring(2);
+  // Siempre quedarse con los últimos 10 dígitos
+  if (n.length > 10) n = n.slice(-10);
   return n;
 }
 
