@@ -290,6 +290,13 @@ function extraerNombreDelMensaje(mensaje) {
   return null;
 }
 
+// ── Detector de estado mexicano en texto ─────────────────────────────────────
+
+function detectarUbicacionMX(texto) {
+  return /\b(aguascalientes|baja\s*california|campeche|chiapas|chihuahua|coahuila|colima|durango|guanajuato|guerrero|hidalgo|jalisco|guadalajara|michoac[aá]n|morelos|nayarit|nuevo\s*le[oó]n|monterrey|oaxaca|puebla|quer[eé]taro|quintana\s*roo|san\s*luis\s*potos[ií]|sinaloa|sonora|tabasco|tamaulipas|tlaxcala|veracruz|yucat[aá]n|zacatecas|m[eé]rida|hermosillo|culiac[aá]n|saltillo|villahermosa|tuxtla|xalapa|tepic|pachuca|chetumal|la\s*paz)\b/i
+    .test(texto);
+}
+
 // ── Detector de zona local por texto ─────────────────────────────────────────
 
 function mencionaZonaLocal(texto) {
@@ -315,6 +322,55 @@ async function handleAskingMexico(phone, message, session) {
         'Cliente con número extranjero');
     }
     return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor.';
+  }
+
+  // Detectar estado/ciudad mexicana → saltar confirmación de México
+  if (detectarUbicacionMX(message)) {
+    const nombreDetectado = extraerNombreDelMensaje(message);
+    const nombreLimpio = nombreDetectado ? sheetsService.limpiarNombre(nombreDetectado) : null;
+
+    let ubicRowIndex = null;
+    try {
+      const yaExisteUbic = await sheetsService.findCustomer(phone);
+      if (yaExisteUbic) {
+        ubicRowIndex = yaExisteUbic.rowIndex;
+      } else {
+        ubicRowIndex = await sheetsService.registerCustomer({
+          phone, name: nombreLimpio || '', email: '', state: '', city: '', cp: '',
+          channel: 'paqueteria', channelDetail: 'Nacional', segmento: 'Lead frío',
+          aceWa: 'SI', entryPoint: session.tempData?.entryPoint || 'Directo', origen: 'WhatsApp',
+        });
+        console.log(`✅ Lead registrado por ubicación MX detectada | ${phone}`);
+      }
+    } catch (err) {
+      console.error('Error registrando cliente por ubicación MX:', err.message);
+    }
+
+    const customerUbic = {
+      phone, name: nombreLimpio || '', rowIndex: ubicRowIndex,
+      channel: 'paqueteria', channelDetail: 'Nacional', segmento: 'Lead frío',
+    };
+
+    if (nombreLimpio) {
+      await sessionManager.updateSession(phone, {
+        flowState: 'active',
+        tempData:  { ...session.tempData, name: nombreLimpio, nameAttempts: 0, primerMensaje: message },
+        customer:  customerUbic,
+      });
+      const first = primerNombre(nombreLimpio);
+      return pick([
+        `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`,
+        `¡Qué bueno que nos escribes, ${first}! ¿En qué te ayudo?`,
+        `Gracias ${first} 🌾 ¿Qué necesitas hoy?`,
+      ]);
+    }
+
+    await sessionManager.updateSession(phone, {
+      flowState: 'asking_name',
+      tempData:  { ...session.tempData, nameAttempts: 0, primerMensaje: message },
+      customer:  customerUbic,
+    });
+    return '¿Con quién tengo el gusto? 😊';
   }
 
   // Detectar CDMX/Edomex mencionado en texto antes de registrar
