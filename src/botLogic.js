@@ -250,7 +250,16 @@ async function handleMessage(phone, messageBody) {
     case 'asking_mexico':    return handleAskingMexico(phone, messageBody, session);
     case 'asking_name':      return handleAskingName(phone, messageBody, session);
     case 'active':           return handleActive(phone, messageBody, session);
-    case 'waiting_for_wig':  return handleWaitingForWig(phone, messageBody, session);
+    case 'waiting_for_wig': {
+      const esCierre = /^(ok|okey|okay|gracias|bien|perfecto|entendido|👍|🙌|👌|de acuerdo|va|listo|sale|hasta luego|bye|adios|adiós|hasta pronto)$/i.test(messageBody.trim());
+      if (esCierre) {
+        return '¡Hasta luego! El asesor te contactará en breve 🙌';
+      }
+      sheetsService.appendConversationLog(
+        phone, messageBody, '[info adicional mientras espera asesor]'
+      ).catch(() => {});
+      return 'Anotado 📝 Le paso esa info al asesor para que llegue preparado.';
+    }
     case 'escalated':        return handleEscalated(phone, messageBody, session);
     case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
     case 'confirming_escalation':   return handleConfirmingEscalation(phone, messageBody, session);
