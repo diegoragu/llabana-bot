@@ -163,4 +163,8 @@ async function getAllActiveSessions() {
   return [...memorySessions.entries()];
 }
 
-module.exports = { getSession, createSession, updateSession, deleteSession, getActiveSessionCount, getAllActiveSessions };
+function getRedisClient() {
+  return redis;
+}
+
+module.exports = { getSession, createSession, updateSession, deleteSession, getActiveSessionCount, getAllActiveSessions, getRedisClient };

@@ -2,6 +2,8 @@ const sessionManager = require('./sessionManager');
 const sheetsService  = require('./sheetsService');
 const twilioService  = require('./twilioService');
 
+const redis = sessionManager.getRedisClient?.() || null;
+
 // Estados que ameritan seguimiento
 const ESTADOS_SEGUIMIENTO = new Set([
   'active', 'waiting_for_wig', 'confirming_escalation'
@@ -19,8 +21,28 @@ function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// Registro de seguimientos ya enviados para no duplicar
+// Fallback en memoria si no hay Redis
 const seguimientosEnviados = new Set();
+
+async function yaEnviadoHoy(phone) {
+  if (!redis) return seguimientosEnviados.has(phone);
+  try {
+    const val = await redis.get(`followup:sent:${phone}`);
+    return !!val;
+  } catch {
+    return seguimientosEnviados.has(phone);
+  }
+}
+
+async function marcarEnviado(phone) {
+  seguimientosEnviados.add(phone); // fallback memoria
+  if (!redis) return;
+  try {
+    await redis.set(`followup:sent:${phone}`, '1', 'EX', 86400);
+  } catch (err) {
+    console.error('[FOLLOWUP] Redis mark error:', err.message);
+  }
+}
 
 async function runFollowUps() {
   try {
@@ -32,8 +54,8 @@ async function runFollowUps() {
       // Solo estados relevantes
       if (!ESTADOS_SEGUIMIENTO.has(session.flowState)) continue;
 
-      // Ya se le envió seguimiento en esta sesión
-      if (seguimientosEnviados.has(phone)) continue;
+      // Ya se le envió seguimiento hoy
+      if (await yaEnviadoHoy(phone)) continue;
 
       // Calcular inactividad
       const inactivo = ahora - (session.lastActivity || 0);
@@ -57,7 +79,7 @@ async function runFollowUps() {
 
       try {
         await twilioService.sendMessage(phone, mensaje);
-        seguimientosEnviados.add(phone);
+        await marcarEnviado(phone);
 
         console.log(`📲 [FOLLOWUP] Seguimiento enviado a ${phone} | nombre: ${nombre} | inactivo: ${Math.round(inactivo/60000)} min`);
 
