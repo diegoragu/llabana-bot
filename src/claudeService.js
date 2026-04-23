@@ -154,7 +154,36 @@ async function chat(history, customer, query = '') {
     messages:   recentHistory,
   });
 
-  return response.content[0].text.trim();
+  const respuesta = response.content[0].text.trim();
+
+  // Detectar señales de que el bot no supo ayudar
+  const NO_SUPO = [
+    /no tengo ese producto/i,
+    /no lo tengo en mi cat[aá]logo/i,
+    /no cuento con/i,
+    /no manejo(mos)?/i,
+    /no est[aá] en mi cat[aá]logo/i,
+    /te paso con un asesor/i,
+    /no puedo ayudarte con eso/i,
+    /no tengo informaci[oó]n/i,
+    /no reconozco ese producto/i,
+  ];
+
+  const noSupo = NO_SUPO.some(r => r.test(respuesta));
+
+  if (noSupo) {
+    const ultimoMensaje = history
+      .filter(m => m.role === 'user')
+      .slice(-1)[0]?.content || 'desconocido';
+
+    console.log(
+      `🔍 [DIAGNOSTICO] Bot no supo ayudar | ` +
+      `Cliente dijo: "${ultimoMensaje.substring(0, 100)}" | ` +
+      `Bot respondió: "${respuesta.substring(0, 100)}"`
+    );
+  }
+
+  return respuesta;
 }
 
 module.exports = { chat };

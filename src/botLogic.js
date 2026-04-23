@@ -674,7 +674,31 @@ async function handleActive(phone, message, session) {
 
   if (!response) response = '¿En qué te puedo ayudar? 😊';
 
+  // Diagnóstico: cliente se despide sin haber recibido link de compra
+  const DESPEDIDAS_DIAG = /^(gracias|ok|okey|bye|adios|adiós|hasta luego|no gracias|está bien|de acuerdo|ya no|ya vi|lo pienso|lo considero)$/i;
+  const COMPRO_DIAG = /llabanaenlinea\.com|pedido|comprar|ordenar/i;
+  if (DESPEDIDAS_DIAG.test(message.trim())) {
+    const tuvoProducto = session.conversationHistory
+      .some(m => COMPRO_DIAG.test(m.content || ''));
+    if (!tuvoProducto) {
+      console.log(
+        `🔍 [DIAGNOSTICO] Cliente se fue sin comprar | ` +
+        `Nombre: ${session.customer?.name || session.tempData?.name || 'desconocido'} | ` +
+        `Mensajes: ${session.conversationHistory.length} | ` +
+        `Último: "${message}"`
+      );
+    }
+  }
+
   if (response.includes('ESCALAR_A_WIG')) {
+    const ultimoMensaje = session.conversationHistory
+      .filter(m => m.role === 'user')
+      .slice(-1)[0]?.content || 'desconocido';
+    console.log(
+      `🔍 [DIAGNOSTICO] Escalación detectada por Claude | ` +
+      `Último mensaje: "${ultimoMensaje.substring(0, 100)}" | ` +
+      `Historial: ${session.conversationHistory.length} msgs`
+    );
     return escalateWithResumen(phone, session, 'Detectado por Claude');
   }
 
