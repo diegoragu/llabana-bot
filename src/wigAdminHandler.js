@@ -66,7 +66,9 @@ async function handleWigCommand(body) {
     const phone = normalizePhoneForSearch(matchReparto[1]);
     if (!phone) return `❌ Número inválido: ${matchReparto[1]}`;
 
+    console.log(`🔍 [WIG-REPARTO] phone normalizado: ${phone}`);
     const cliente = await sheetsService.findCustomer(phone);
+    console.log(`🔍 [WIG-REPARTO] cliente encontrado: ${JSON.stringify(cliente ? {name: cliente.name, rowIndex: cliente.rowIndex, phone: cliente.phone} : null)}`);
     if (!cliente) {
       return `❌ No encontré ese número en la base de datos.\nVerifica el número e intenta de nuevo.`;
     }
