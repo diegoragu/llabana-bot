@@ -2,6 +2,7 @@ const botLogic    = require('./botLogic');
 const twilioService = require('./twilioService');
 const { updateTranscript, getExistingTranscript } = require('./transcriptService');
 const sessionManager = require('./sessionManager');
+const { handleWigCommand, isWigCommand } = require('./wigAdminHandler');
 
 /**
  * Maneja el webhook POST de Twilio para mensajes de WhatsApp entrantes.
@@ -45,6 +46,22 @@ async function procesarMensaje(from, body) {
     const log = chatLogs.get(from);
     log.lines.push(`Cliente: ${body}`);
     log.lastActivity = Date.now();
+
+    // Comandos admin de Wig
+    if (await isWigCommand(from, body)) {
+      try {
+        const respuesta = await handleWigCommand(body);
+        await twilioService.sendMessage(from, respuesta);
+        console.log(`🔧 [WIG-ADMIN] ${body.substring(0, 80)}`);
+      } catch (err) {
+        console.error('❌ [WIG-ADMIN] Error:', err.message);
+        await twilioService.sendMessage(
+          from,
+          '❌ Error procesando el comando. Intenta de nuevo.'
+        );
+      }
+      return;
+    }
 
     const reply = await botLogic.handleMessage(from, body);
     await twilioService.sendMessage(from, reply);

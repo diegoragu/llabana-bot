@@ -488,7 +488,10 @@ async function updateCustomerPhone(rowIndex, phone) {
 }
 
 // Tags válidos — solo estos valores pueden guardarse en Historial de tags
-const VALID_TAGS = new Set(['Solo cuenta', 'Carrito abandonado', 'Compro', 'Recompra', 'newsletter']);
+const VALID_TAGS = new Set([
+  'Solo cuenta', 'Carrito abandonado', 'Compro', 'Recompra', 'newsletter',
+  'Reparto', 'No Contestó', 'Sucursal',
+]);
 
 // Detecta cadenas que parecen fechas (YYYY-MM-DD, DD/MM/YYYY, YYYY-MM-DD HH:MM, etc.)
 const DATE_LIKE = /^\d{2,4}[-/]\d{2}[-/\d]/;
@@ -502,7 +505,11 @@ const DATE_LIKE = /^\d{2,4}[-/]\d{2}[-/\d]/;
  */
 async function appendTag(rowIndex, tag) {
   // Rechazar cualquier valor que no sea un tag conocido (evita fechas u otros datos)
-  if (!VALID_TAGS.has(tag)) {
+  const tagValido = VALID_TAGS.has(tag) ||
+    /^Sucursal\s+\w/i.test(tag) ||
+    tag === 'No Contestó' ||
+    tag === 'Reparto';
+  if (!tagValido) {
     console.warn(`appendTag: valor inválido ignorado — "${tag}" no es un tag reconocido`);
     return;
   }
