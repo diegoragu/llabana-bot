@@ -321,9 +321,33 @@ async function handleOrderPaid(payload) {
     return;
   }
 
-  const customer = await sheetsService.findCustomerByEmail(email);
+  let customer = await sheetsService.findCustomerByEmail(email);
+
+  // Fallback: buscar por teléfono si no encontró por email
   if (!customer) {
-    console.log(`   orders/paid: ${email} no está en Sheets`);
+    const phonesFromPayload = [
+      payload.customer?.phone,
+      payload.shipping_address?.phone,
+      payload.billing_address?.phone,
+    ].filter(Boolean);
+
+    for (const ph of phonesFromPayload) {
+      const found = await sheetsService.findCustomer(ph);
+      if (found) {
+        customer = found;
+        console.log(`   orders/paid: encontrado por teléfono ${ph}`);
+        // Actualizar email en Sheets si no lo tenía
+        if (!found.email && email) {
+          await sheetsService.updateCustomerEmail(found.rowIndex, email);
+        }
+        break;
+      }
+    }
+  }
+
+  if (!customer) {
+    console.log(`   ⚠️  orders/paid: ${email} no está en Sheets — orden no vinculada`);
+    console.log(`   🔍 [DIAGNOSTICO] Orden sin vincular | email: ${email} | total: ${payload.total_price}`);
     return;
   }
 
