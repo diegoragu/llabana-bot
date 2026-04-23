@@ -150,13 +150,9 @@ function capitalize(str) {
 }
 
 function primerNombre(nombre) {
-  const ARTICULOS = /^(el|la|los|las|don|doña|sr|sra)$/i;
-  const palabras = (nombre || '').split(/\s+/).filter(Boolean);
-  // Si la primera palabra es un artículo o tratamiento, tomar la siguiente
-  if (palabras.length > 1 && ARTICULOS.test(palabras[0])) {
-    return palabras[1];
-  }
-  return palabras[0] || '';
+  const TITULOS = /^(dr\.?|dra\.?|doctor|doctora|ing\.?|lic\.?|mtro\.?|mtra\.?|prof\.?|sr\.?|sra\.?|don|doña)\s+/i;
+  const sinTitulo = (nombre || '').replace(TITULOS, '').trim();
+  return sinTitulo.split(/\s+/)[0] || '';
 }
 
 // ── Punto de entrada ──────────────────────────────────────────────────────────
@@ -395,7 +391,7 @@ async function handleAskingMexico(phone, message, session) {
 
 const RESPUESTA_FLUJO = /^(s[ií],?|no,?|ok,?|claro,?|desde\s+\w+|estoy\s+en|soy\s+de|vengo\s+de)/i;
 
-const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|tiene[n]?(\s|$)|es\s+(saber|que|para|sobre|correcto|as[ií])|para\s+saber|quiero\s+saber|quisiera|necesito|me\s+gustar[ií]a|tiene\s+costo|tiene\s+precio|tiene\s+env[ií]o|cuanto\s+cuesta|si\s+tiene|si\s+manejan|de\s+el\s+estado|del\s+estado|en\s+el\s+estado|as[ií](\s+(es|est[aá]|lo)|$)|correcto|exacto|ok(\s|$)|M[eé]xico|Quer[eé]taro|Oaxaca|Puebla|Jalisco|Veracruz|Chiapas|Guerrero|Sonora|Chihuahua|Sinaloa|Tamaulipas|Coahuila|Hidalgo|Tabasco|Campeche|Yucat[aá]n|Quintana\s+Roo|Monterrey|Guadalajara|CDMX|Ciudad\s+de\s+M[eé]xico)/i;
+const NO_ES_NOMBRE = /^(saber|buscar|cotizar|preguntar|consultar|verificar|checar|querer|necesitar|tiene[n]?(\s|$)|es\s+(saber|que|para|sobre|correcto|as[ií]|en\s)|para\s+(saber|este|ese|el|la|los|las|un|una)\s|quiero\s+saber|quisiera|necesito|me\s+gustar[ií]a|tiene\s+costo|tiene\s+precio|tiene\s+env[ií]o|cuanto\s+cuesta|si\s+tiene|si\s+manejan|de\s+el\s+estado|del\s+estado|en\s+el\s+estado|en\s+\w|estoy\s+en\s|vengo\s+de\s|soy\s+de\s|as[ií](\s+(es|est[aá]|lo)|$)|correcto|exacto|ok(\s|$)|M[eé]xico|Quer[eé]taro|Oaxaca|Puebla|Jalisco|Veracruz|Chiapas|Guerrero|Sonora|Chihuahua|Sinaloa|Tamaulipas|Coahuila|Hidalgo|Tabasco|Campeche|Yucat[aá]n|Quintana\s+Roo|Monterrey|Guadalajara|CDMX|Ciudad\s+de\s+M[eé]xico)/i;
 
 async function handleAskingName(phone, message, session) {
   // Rechazar verbos de intención que no son nombres
@@ -671,6 +667,18 @@ async function handleActive(phone, message, session) {
 
   if (response.includes('ESCALAR_A_WIG')) {
     return escalateWithResumen(phone, session, 'Detectado por Claude');
+  }
+
+  // Contar productos no encontrados — escalar tras 2 respuestas sin catálogo
+  const sinProducto = /no tengo ese producto|no lo tengo en mi cat[aá]logo|no tengo ese en mi cat[aá]logo/i.test(response);
+  if (sinProducto) {
+    const noEncontrados = (session.tempData?.productosNoEncontrados || 0) + 1;
+    session.tempData = { ...session.tempData, productosNoEncontrados: noEncontrados };
+    await sessionManager.updateSession(phone, { tempData: session.tempData });
+    if (noEncontrados >= 2) {
+      return escalateWithResumen(phone, session,
+        'Productos no encontrados en catálogo — cliente requiere asesor');
+    }
   }
 
   session.conversationHistory.push({ role: 'assistant', content: response });

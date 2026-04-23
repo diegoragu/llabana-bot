@@ -77,6 +77,10 @@ NO escales por:
 - "Mayoreo" de menos de 500 bultos → manda a tienda en línea
 - Asesoría de producto que sí puedes responder → respóndelo tú
 - Clientes de provincia que quieren comprar → manda a tienda
+
+━━━ HORARIO ━━━
+Si preguntan horario de atención o si están abiertos:
+Responde: "Atendemos de lunes a viernes 9am-6pm y sábados 9am-2pm 🕘 Fuera de ese horario, un asesor te contactará al siguiente día hábil."
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
 async function chat(history, customer, query = '') {
