@@ -85,12 +85,32 @@ async function handleWigCommand(body) {
       timeZone: 'America/Mexico_City'
     });
 
-    await sheetsService.updateOrderData(cliente.rowIndex, {
-      segmento,
-      fechaCompra: ahora,
-    });
-    await sheetsService.appendTag(cliente.rowIndex, tag);
-    await sheetsService.appendTag(cliente.rowIndex, 'Reparto');
+    console.log(`🔍 [WIG-REPARTO] Actualizando rowIndex: ${cliente.rowIndex} | segmento: ${segmento} | tag: ${tag}`);
+
+    try {
+      await sheetsService.updateOrderData(cliente.rowIndex, {
+        segmento,
+        fechaCompra: ahora,
+      });
+      console.log(`🔍 [WIG-REPARTO] updateOrderData OK`);
+    } catch (err) {
+      console.error(`❌ [WIG-REPARTO] updateOrderData ERROR:`, err.message);
+    }
+
+    try {
+      await sheetsService.appendTag(cliente.rowIndex, tag);
+      console.log(`🔍 [WIG-REPARTO] appendTag ${tag} OK`);
+    } catch (err) {
+      console.error(`❌ [WIG-REPARTO] appendTag ERROR:`, err.message);
+    }
+
+    try {
+      await sheetsService.appendTag(cliente.rowIndex, 'Reparto');
+      console.log(`🔍 [WIG-REPARTO] appendTag Reparto OK`);
+    } catch (err) {
+      console.error(`❌ [WIG-REPARTO] appendTag Reparto ERROR:`, err.message);
+    }
+
     await sessionManager.deleteSession(phone);
 
     console.log(`🔧 [WIG-ADMIN] /reparto | ${nombre} | ${phone} → ${segmento}`);
