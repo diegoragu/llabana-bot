@@ -1,6 +1,7 @@
-const sessionManager = require('./sessionManager');
-const sheetsService  = require('./sheetsService');
-const twilioService  = require('./twilioService');
+const sessionManager    = require('./sessionManager');
+const sheetsService     = require('./sheetsService');
+const twilioService     = require('./twilioService');
+const transcriptService = require('./transcriptService');
 
 const redis = sessionManager.getRedisClient?.() || null;
 
@@ -82,6 +83,18 @@ async function runFollowUps() {
         await marcarEnviado(phone);
 
         console.log(`📲 [FOLLOWUP] Seguimiento enviado a ${phone} | nombre: ${nombre} | inactivo: ${Math.round(inactivo/60000)} min`);
+
+        // Guardar en transcript para que aparezca en el dashboard
+        try {
+          const telLimpio = phone.replace('whatsapp:', '');
+          await transcriptService.updateTranscript(
+            telLimpio,
+            nombre,
+            `Bot: [Follow-up automático] ${mensaje}`
+          );
+        } catch (err) {
+          console.error(`❌ [FOLLOWUP] Error guardando transcript:`, err.message);
+        }
 
         // Registrar en Sheets pestaña 4 Seguimientos
         await sheetsService.addSeguimiento(
