@@ -7,7 +7,7 @@ const redis = sessionManager.getRedisClient?.() || null;
 
 // Estados que ameritan seguimiento
 const ESTADOS_SEGUIMIENTO = new Set([
-  'active', 'waiting_for_wig', 'confirming_escalation'
+  'active', 'confirming_escalation'
 ]);
 
 // Mensajes de seguimiento variados
