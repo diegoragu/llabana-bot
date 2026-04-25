@@ -70,9 +70,7 @@ async function handleWigCommand(body) {
     const phone = normalizePhoneForSearch(matchReparto[1]);
     if (!phone) return `❌ Número inválido: ${matchReparto[1]}`;
 
-    console.log(`🔍 [WIG-REPARTO] phone normalizado: ${phone}`);
     const cliente = await sheetsService.findCustomer(phone);
-    console.log(`🔍 [WIG-REPARTO] cliente encontrado: ${JSON.stringify(cliente ? {name: cliente.name, rowIndex: cliente.rowIndex, phone: cliente.phone} : null)}`);
     if (!cliente) {
       return `❌ No encontré ese número en la base de datos.\nVerifica el número e intenta de nuevo.`;
     }
@@ -85,30 +83,25 @@ async function handleWigCommand(body) {
       timeZone: 'America/Mexico_City'
     });
 
-    console.log(`🔍 [WIG-REPARTO] Actualizando rowIndex: ${cliente.rowIndex} | segmento: ${segmento} | tag: ${tag}`);
-
     try {
       await sheetsService.updateOrderData(cliente.rowIndex, {
         segmento,
         fechaCompra: ahora,
       });
-      console.log(`🔍 [WIG-REPARTO] updateOrderData OK`);
     } catch (err) {
-      console.error(`❌ [WIG-REPARTO] updateOrderData ERROR:`, err.message);
+      console.error(`❌ [WIG-REPARTO] ERROR:`, err.message);
     }
 
     try {
       await sheetsService.appendTag(cliente.rowIndex, tag);
-      console.log(`🔍 [WIG-REPARTO] appendTag ${tag} OK`);
     } catch (err) {
-      console.error(`❌ [WIG-REPARTO] appendTag ERROR:`, err.message);
+      console.error(`❌ [WIG-REPARTO] ERROR:`, err.message);
     }
 
     try {
       await sheetsService.appendTag(cliente.rowIndex, 'Reparto');
-      console.log(`🔍 [WIG-REPARTO] appendTag Reparto OK`);
     } catch (err) {
-      console.error(`❌ [WIG-REPARTO] appendTag Reparto ERROR:`, err.message);
+      console.error(`❌ [WIG-REPARTO] ERROR:`, err.message);
     }
 
     await sessionManager.deleteSession(phone);

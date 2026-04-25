@@ -173,9 +173,14 @@ function limpiarNombre(nombre) {
   // Solo dígitos
   if (/^\d+$/.test(n)) return '';
 
+  // Solo letras (incluye acentos, ñ, diéresis), espacios, apóstrofo, guión
+  const SOLO_NOMBRE = /^[a-záéíóúüñA-ZÁÉÍÓÚÜÑ\s'-]+$/u;
+  if (!SOLO_NOMBRE.test(n)) return '';
+
   // Lowercase primero (normaliza GARCIA, RomáN, etc.) luego capitaliza cada palabra
   return n.toLowerCase()
     .split(' ')
+    .filter(Boolean)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 }
