@@ -184,15 +184,6 @@ async function handleMessage(phone, messageBody) {
 
   // Sesión nueva
   if (!session) {
-    // Filtro inmediato: solo números mexicanos
-    const esMexicano = phone.startsWith('whatsapp:+521') ||
-                       phone.startsWith('whatsapp:+52');
-    if (!esMexicano) {
-      session = await sessionManager.createSession(phone);
-      await sessionManager.updateSession(phone, { flowState: 'out_of_coverage' });
-      return OUT_OF_COVERAGE_MSG;
-    }
-
     const entryPoint = detectarOrigen(messageBody);
     session = await sessionManager.createSession(phone);
     session.tempData = { entryPoint };
@@ -251,7 +242,15 @@ async function handleMessage(phone, messageBody) {
       return handleActive(phone, messageBody, await sessionManager.getSession(phone));
     }
 
-    // Cliente nuevo → filtro México
+    // Cliente nuevo → verificar número mexicano antes de saludar
+    const esMexicano = phone.startsWith('whatsapp:+521') ||
+                       phone.startsWith('whatsapp:+52');
+    if (!esMexicano) {
+      await sessionManager.updateSession(phone, { flowState: 'out_of_coverage' });
+      console.log(`🌎 Número extranjero bloqueado: ${phone}`);
+      return OUT_OF_COVERAGE_MSG;
+    }
+
     await sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
     return pick(WELCOME_VARIANTS);
   }
