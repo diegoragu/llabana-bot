@@ -86,6 +86,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .bubble { max-width: 68%; padding: 9px 13px; border-radius: 14px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .msg-row.bot .bubble { background: white; border: 1px solid var(--border); border-bottom-left-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
 .msg-row.client .bubble { background: var(--green); color: white; border-bottom-right-radius: 3px; }
+.bubble.followup { border-left: 3px solid var(--gold); background: var(--gold-p); }
+.followup-label { font-size: 10px; color: var(--gold); font-family: var(--mono); margin-bottom: 4px; font-weight: 600; }
 .sys-msg { text-align: center; margin: 6px 0; font-size: 11px; color: var(--muted); font-family: var(--mono); }
 .sys-msg span { background: var(--border); padding: 3px 10px; border-radius: 10px; }
 .escalation-banner { background: var(--orange-p); border: 1px solid #FFCC02; border-radius: 8px; padding: 10px 14px; margin: 8px 0; font-size: 12px; display: flex; align-items: flex-start; gap: 8px; }
@@ -264,7 +266,9 @@ function openConv(i, el) {
             return `
               <div class="msg-row ${m.s}">
                 <div class="av ${m.s==='bot'?'b':'c'}">${m.s==='bot'?'B':'C'}</div>
-                <div class="bubble">${m.t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>').replace(/\n/g,'<br>')}</div>
+                <div class="bubble${m.followUp?' followup':''}">
+                  ${m.followUp?'<div class="followup-label">⏰ Follow-up automático</div>':''}${esc(m.t)}
+                </div>
               </div>`;
           }).join('')
         : '<div style="text-align:center;font-size:12px;color:var(--muted);padding:20px">Sin mensajes</div>'}
@@ -284,7 +288,9 @@ function parseTx(raw) {
 
   for (const line of lines) {
     if (/^[Bb]ot:/.test(line)) {
-      msgs.push({ s: 'bot', t: line.replace(/^[Bb]ot:\s*/, '') });
+      const text = line.replace(/^[Bb]ot:\s*/, '');
+      const isFollowUp = /^\[Follow-up/.test(text);
+      msgs.push({ s: 'bot', t: text.replace(/^\[Follow-up[^\]]*\]\s*/, ''), followUp: isFollowUp });
     } else if (/^[Cc]liente:/.test(line)) {
       msgs.push({ s: 'client', t: line.replace(/^[Cc]liente:\s*/, '') });
     } else if (/^\[inicio/.test(line)) {

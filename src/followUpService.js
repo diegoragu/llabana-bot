@@ -87,10 +87,15 @@ async function runFollowUps() {
         // Guardar en transcript para que aparezca en el dashboard
         try {
           const telLimpio = phone.replace('whatsapp:', '');
+          const existente = await transcriptService.getExistingTranscript(telLimpio);
+          const lineas = existente
+            ? existente.split('\n').filter(Boolean)
+            : [];
+          lineas.push(`Bot: [Follow-up] ${mensaje}`);
           await transcriptService.updateTranscript(
             telLimpio,
             nombre,
-            `Bot: [Follow-up automático] ${mensaje}`
+            lineas.join('\n')
           );
         } catch (err) {
           console.error(`❌ [FOLLOWUP] Error guardando transcript:`, err.message);
