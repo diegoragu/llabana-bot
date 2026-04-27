@@ -579,6 +579,23 @@ async function handleAskingName(phone, message, session) {
     const first = primerNombre(nombre);
     if (session.customer?.rowIndex) {
       sheetsService.updateOrderData(session.customer.rowIndex, { name: nombre }).catch(() => {});
+    } else {
+      // Sin rowIndex — registrar cliente ahora con el nombre ya capturado
+      sheetsService.registerCustomer({
+        phone,
+        name:       nombre,
+        segmento:   'Lead frío',
+        channel:    'paqueteria',
+        aceWa:      'SI',
+        entryPoint: session.tempData?.entryPoint || 'Directo',
+        origen:     'WhatsApp',
+      }).then(newRowIndex => {
+        if (newRowIndex) {
+          sessionManager.updateSession(phone, {
+            customer: { ...session.customer, rowIndex: newRowIndex, name: nombre },
+          }).catch(() => {});
+        }
+      }).catch(() => {});
     }
     await sessionManager.updateSession(phone, {
       flowState: 'active',
