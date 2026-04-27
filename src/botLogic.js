@@ -580,12 +580,16 @@ async function handleAskingName(phone, message, session) {
     if (session.customer?.rowIndex) {
       sheetsService.updateOrderData(session.customer.rowIndex, { name: nombre }).catch(() => {});
     } else {
-      // Sin rowIndex — registrar cliente ahora con el nombre ya capturado
+      // Fallback: cliente sin rowIndex — registrar ahora con el nombre
+      console.log(`⚠️ [NOMBRE] rowIndex no encontrado para ${phone} — registrando con nombre ${nombre}`);
       sheetsService.registerCustomer({
         phone,
         name:       nombre,
+        email:      '',
+        state:      session.customer?.state || '',
+        city:       session.customer?.city  || '',
+        cp:         '',
         segmento:   'Lead frío',
-        channel:    'paqueteria',
         aceWa:      'SI',
         entryPoint: session.tempData?.entryPoint || 'Directo',
         origen:     'WhatsApp',
@@ -593,9 +597,12 @@ async function handleAskingName(phone, message, session) {
         if (newRowIndex) {
           sessionManager.updateSession(phone, {
             customer: { ...session.customer, rowIndex: newRowIndex, name: nombre },
-          }).catch(() => {});
+          });
+          console.log(`✅ [NOMBRE] Cliente registrado con nombre en fallback | fila ${newRowIndex}`);
         }
-      }).catch(() => {});
+      }).catch(err => {
+        console.error(`❌ [NOMBRE] Error en fallback registro:`, err.message);
+      });
     }
     await sessionManager.updateSession(phone, {
       flowState: 'active',
