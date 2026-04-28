@@ -244,12 +244,17 @@ async function chat(history, customer, query = '') {
   if (noSupo) {
     const ultimoMensaje = history
       .filter(m => m.role === 'user')
-      .slice(-1)[0]?.content || 'desconocido';
+      .slice(-1)[0]?.content || '';
+    const penultimoMensaje = history
+      .filter(m => m.role === 'user')
+      .slice(-2)[0]?.content || '';
 
     console.log(
-      `🔍 [DIAGNOSTICO] Bot no supo ayudar | ` +
-      `Cliente dijo: "${ultimoMensaje.substring(0, 100)}" | ` +
-      `Bot respondió: "${respuesta.substring(0, 100)}"`
+      `🔍 [DIAGNOSTICO:NO_SUPO] ` +
+      `nombre="${customer?.name || 'N/D'}" | ` +
+      `cliente_dijo="${ultimoMensaje.substring(0, 100)}" | ` +
+      `contexto="${penultimoMensaje.substring(0, 60)}" | ` +
+      `bot_respondio="${respuesta.substring(0, 100)}"`
     );
   }
 

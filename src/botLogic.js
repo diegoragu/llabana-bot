@@ -860,10 +860,11 @@ async function handleActive(phone, message, session) {
       .some(m => COMPRO_DIAG.test(m.content || ''));
     if (!tuvoProducto) {
       console.log(
-        `🔍 [DIAGNOSTICO] Cliente se fue sin comprar | ` +
-        `Nombre: ${session.customer?.name || session.tempData?.name || 'desconocido'} | ` +
-        `Mensajes: ${session.conversationHistory.length} | ` +
-        `Último: "${message}"`
+        `🔍 [DIAGNOSTICO:SIN_COMPRA] ` +
+        `nombre="${session.customer?.name || session.tempData?.name || 'N/D'}" | ` +
+        `ultimo_mensaje="${message}" | ` +
+        `total_mensajes=${session.conversationHistory.length} | ` +
+        `flow=${session.flowState}`
       );
     }
   }
@@ -873,9 +874,10 @@ async function handleActive(phone, message, session) {
       .filter(m => m.role === 'user')
       .slice(-1)[0]?.content || 'desconocido';
     console.log(
-      `🔍 [DIAGNOSTICO] Escalación detectada por Claude | ` +
-      `Último mensaje: "${ultimoMensaje.substring(0, 100)}" | ` +
-      `Historial: ${session.conversationHistory.length} msgs`
+      `🔍 [DIAGNOSTICO:ESCALACION] ` +
+      `nombre="${session.customer?.name || session.tempData?.name || 'N/D'}" | ` +
+      `mensaje="${message.substring(0, 100)}" | ` +
+      `historial=${session.conversationHistory.length} msgs`
     );
     return escalateWithResumen(phone, session, 'Detectado por Claude');
   }
