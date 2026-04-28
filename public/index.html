@@ -83,7 +83,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .av { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
 .av.b { background: var(--green); color: white; }
 .av.c { background: var(--orange); color: white; }
-.bubble { max-width: 68%; padding: 9px 13px; border-radius: 14px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.bubble { max-width: 62%; padding: 9px 13px; border-radius: 14px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .msg-row.bot .bubble { background: white; border: 1px solid var(--border); border-bottom-left-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
 .msg-row.client .bubble { background: var(--green); color: white; border-bottom-right-radius: 3px; }
 .bubble.followup { border-left: 3px solid var(--gold); background: var(--gold-p); }
@@ -102,6 +102,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   .layout { grid-template-columns: 1fr; }
   .panel-right { display: none; position: fixed; inset: 52px 0 0; z-index: 20; }
   .panel-right.open { display: flex; }
+  .bubble { max-width: 85%; }
   .back-btn { display: flex !important; }
 }
 .back-btn { display: none; align-items: center; gap: 5px; background: none; border: none; color: var(--green); font-family: var(--sans); font-size: 13px; cursor: pointer; margin-right: 8px; }
