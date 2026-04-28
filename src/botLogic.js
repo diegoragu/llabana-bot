@@ -644,6 +644,19 @@ async function handleActive(phone, message, session) {
     return '¿Quieres empezar una nueva consulta o seguimos con lo que teníamos? 😊';
   }
 
+  // Si ya hay escalación pendiente fuera de horario, no procesar con Claude
+  if (session.tempData?.escalacionPendiente) {
+    const DESPEDIDAS_PENDIENTE = /^(gracias|ok|okey|okay|bien|perfecto|entendido|👍|🙌|hasta luego|bye|adios|adiós|de acuerdo|listo|sale|muchas gracias)$/i;
+    if (DESPEDIDAS_PENDIENTE.test(message.trim())) {
+      return '¡Hasta luego! Te contactaremos a primera hora 🙌';
+    }
+    sheetsService.appendConversationLog(
+      phone, message,
+      '[info adicional — escalación pendiente]'
+    ).catch(() => {});
+    return 'Anotado 📝 Le paso esa info al asesor cuando te contacte.';
+  }
+
   // Agregar mensaje al historial ANTES de cualquier escalación
   // (para que generateResumen incluya el mensaje que disparó la escalación)
   session.conversationHistory.push({ role: 'user', content: message });
