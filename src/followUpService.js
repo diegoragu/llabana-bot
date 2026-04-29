@@ -10,16 +10,33 @@ const ESTADOS_SEGUIMIENTO = new Set([
   'active', 'confirming_escalation'
 ]);
 
-// Mensajes de seguimiento variados
-const FOLLOWUP_MSGS = [
-  n => `Hola${n ? ` ${n}` : ''}! 👋 Solo quería saber si pudiste hacer tu pedido o si tienes alguna duda con la que te pueda ayudar 🌾`,
-  n => `Hola${n ? ` ${n}` : ''}! ¿Pudiste encontrar lo que buscabas en la tienda? Si tienes alguna pregunta aquí estamos 😊`,
-  n => `Hola${n ? ` ${n}` : ''}! 🌾 ¿Te puedo ayudar con algo más? Si tuviste algún problema con tu pedido con gusto te orientamos.`,
-  n => `Hola${n ? ` ${n}` : ''}! Solo pasamos a ver si pudiste comprar o si el asesor ya te contactó. Cualquier duda aquí estamos 🙌`,
-];
+function buildFollowUpMessage(nombre, session) {
+  const first = nombre ? nombre.split(' ')[0] : '';
+  const history = session?.conversationHistory || [];
 
-function pick(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
+  const ultimoMensajeCliente = history
+    .filter(m => m.role === 'user')
+    .map(m => m.content)
+    .filter(c => c && c.length > 4)
+    .slice(-1)[0] || '';
+
+  const ultimoMensajeBot = history
+    .filter(m => m.role === 'assistant')
+    .map(m => m.content)
+    .slice(-1)[0] || '';
+
+  const productoMencionado = ultimoMensajeBot.match(/\*([^*]+)\*/)?.[1] || '';
+
+  if (productoMencionado) {
+    return `Oye${first ? ` ${first}` : ''} 👋 ¿pudiste ver la info del *${productoMencionado}* que te compartí? Aquí sigo por si tienes dudas o quieres hacer tu pedido 🌾`;
+  }
+
+  if (ultimoMensajeCliente.length > 10) {
+    const resumen = ultimoMensajeCliente.substring(0, 60);
+    return `Oye${first ? ` ${first}` : ''} 👋 quedé pendiente de ayudarte con "${resumen}..." ¿Pudiste encontrar lo que buscabas? 🌾`;
+  }
+
+  return `Oye${first ? ` ${first}` : ''} 👋 ¿en qué más te puedo ayudar? Aquí sigo por si tienes alguna duda 🌾`;
 }
 
 // Fallback en memoria si no hay Redis
@@ -76,7 +93,7 @@ async function runFollowUps() {
         ? session.customer.name.split(' ')[0]
         : (session.tempData?.name?.split(' ')[0] || '');
 
-      const mensaje = pick(FOLLOWUP_MSGS)(nombre);
+      const mensaje = buildFollowUpMessage(nombre, session);
 
       try {
         await twilioService.sendMessage(phone, mensaje);

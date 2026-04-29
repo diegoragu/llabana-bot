@@ -272,10 +272,17 @@ async function handleCustomerUpdate(payload) {
 
   if (!marketingValue && !hasFirstName && !hasCarrito && !tieneCtaActiva) return;
 
-  const existing = await sheetsService.findCustomerByEmail(email);
+  let existing = await sheetsService.findCustomerByEmail(email);
   if (!existing) {
-    console.log(`   customers/update: ${email} no está en Sheets, omitiendo`);
-    return;
+    // Shopify a veces manda update antes que create — esperar 4 segundos y reintentar
+    console.log(`   customers/update: ${email} no encontrado, reintentando en 4s...`);
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    existing = await sheetsService.findCustomerByEmail(email);
+    if (!existing) {
+      console.log(`   customers/update: ${email} no está en Sheets tras reintento, omitiendo`);
+      return;
+    }
+    console.log(`   customers/update: ${email} encontrado en reintento ✅`);
   }
 
   const seg = existing.segmento || '';
