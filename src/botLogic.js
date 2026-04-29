@@ -261,14 +261,18 @@ async function handleMessage(phone, messageBody) {
     case 'asking_name':      return handleAskingName(phone, messageBody, session);
     case 'active':           return handleActive(phone, messageBody, session);
     case 'waiting_for_wig': {
-      const esCierre = /^(ok|okey|okay|gracias|bien|perfecto|entendido|👍|🙌|👌|de acuerdo|va|listo|sale|hasta luego|bye|adios|adiós|hasta pronto)$/i.test(messageBody.trim());
-      if (esCierre) {
-        return '¡Hasta luego! El asesor te contactará en breve 🙌';
+      const yaAvisado = session.tempData?.wigAvisado || false;
+
+      if (!yaAvisado) {
+        // Primera vez que escribe después de escalar — avisar y marcar
+        sessionManager.updateSession(phone, {
+          tempData: { ...session.tempData, wigAvisado: true },
+        });
+        return 'Ya avisé al asesor, te contactará en breve 🙌\n\nMientras tanto puedo ayudarte con lo que necesites — asesoría de productos, recomendaciones de alimento, dudas de envío. ¿En qué te ayudo?';
       }
-      sheetsService.appendConversationLog(
-        phone, messageBody, '[info adicional mientras espera asesor]'
-      ).catch(() => {});
-      return 'Anotado 📝 Le paso esa info al asesor para que llegue preparado.';
+
+      // Mensajes siguientes — atender con Claude normal
+      return handleActive(phone, messageBody, session);
     }
     case 'escalated':        return handleEscalated(phone, messageBody, session);
     case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
