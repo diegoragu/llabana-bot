@@ -118,12 +118,10 @@ async function webhookHandler(req, res) {
     const mediaType = req.body?.MediaContentType0 || 'archivo';
     console.log(`📎 Mensaje multimedia de ${from}: ${mediaType}`);
     try {
-      await twilioService.sendMessage(
-        from,
-        'Vi que me mandaste un archivo, pero por ahora solo puedo leer texto 😊 ¿En qué te puedo ayudar?'
-      );
+      const replyMedia = await botLogic.handleMediaMessage(from);
+      await twilioService.sendMessage(from, replyMedia);
     } catch (err) {
-      console.error('Error respondiendo a multimedia:', err.message);
+      console.error(`❌ Error procesando multimedia de ${from}:`, err.message);
     }
     return;
   }

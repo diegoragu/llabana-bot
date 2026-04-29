@@ -1209,4 +1209,21 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
   }
 }
 
-module.exports = { handleMessage };
+async function handleMediaMessage(phone) {
+  const session = await sessionManager.getSession(phone);
+
+  if (session?.flowState === 'active' || session?.flowState === 'waiting_for_wig') {
+    const nombre = session?.customer?.name
+      ? ` ${primerNombre(session.customer.name)}`
+      : '';
+    return `Vi que mandaste una imagen${nombre} 😊 Por el momento no puedo verla, pero cuéntame — ¿qué producto o tema te interesa? Con gusto te ayudo 🌾`;
+  }
+
+  if (session) {
+    return '😊 Recibí tu imagen pero no puedo verla. ¿Me puedes decir con texto qué producto buscas o en qué te puedo ayudar?';
+  }
+
+  return '¡Hola! 👋 Soy el asistente de Llabana, tu aliado en alimento balanceado 🌾\nRecibí tu imagen pero no puedo verla 😅 ¿Me cuentas qué producto te interesa o en qué te puedo ayudar? ¿Estás en México?';
+}
+
+module.exports = { handleMessage, handleMediaMessage };
