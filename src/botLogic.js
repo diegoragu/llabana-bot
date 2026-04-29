@@ -79,6 +79,18 @@ const PRICE_PATTERNS = [
 
 const RESET_PATTERNS = /^(inicio|men[uú]|empezar|reset|start|comenzar|nueva\s*consulta|reiniciar)$/i;
 
+const RH_PATTERNS = [
+  /\bvacante/i, /\bempleo\b/i, /\btrabajo\b/i, /\bcontrataci[oó]n/i,
+  /\brecursos\s*humanos/i, /\brh\b/i, /\bpostularme\b/i, /\bpostulaci[oó]n/i,
+  /\bcurr[ií]culum\b/i, /\bcv\b/i, /\bsueldo\b/i, /\bplaza\b/i,
+  /\bmonitorista\b/i, /\bencargado\b/i, /me\s+interesa\s+(la\s+)?plaza/i,
+  /busco\s+(trabajo|empleo)/i, /quiero\s+trabajar/i,
+];
+
+function isRHRequest(text) {
+  return RH_PATTERNS.some(re => re.test(text));
+}
+
 const DESPEDIDA_PATTERNS = /^(gracias|muchas gracias|seria todo|sería todo|ok gracias|vale gracias|listo gracias|perfecto gracias|hasta luego|bye|adios|adiós|no gracias|es todo|eso es todo|por ahora es todo|nada mas|nada más)$/i;
 
 const ENTRY_POINT_MAP = {
@@ -677,6 +689,13 @@ async function handleActive(phone, message, session) {
   // (para que generateResumen incluya el mensaje que disparó la escalación)
   session.conversationHistory.push({ role: 'user', content: message });
   await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+
+  // Solicitud de empleo o RH
+  if (isRHRequest(message)) {
+    await notifyWig(phone, session, `Solicitud de empleo o RH: "${message.substring(0, 100)}"`);
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    return 'Ese tema lo maneja directamente nuestro equipo 😊 Ya les avisé — en breve te contactan por este mismo WhatsApp.';
+  }
 
   // Solicitud de asesor humano
   if (isRequestingHuman(message)) {
