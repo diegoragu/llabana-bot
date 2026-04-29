@@ -169,6 +169,12 @@ function primerNombre(nombre) {
   return sinTitulo.split(/\s+/)[0] || '';
 }
 
+/** Recorta conversationHistory a los últimos N mensajes (par user/assistant) */
+function trimHistory(history, max = 20) {
+  if (!Array.isArray(history) || history.length <= max) return history;
+  return history.slice(-max);
+}
+
 // ── Punto de entrada ──────────────────────────────────────────────────────────
 
 async function handleMessage(phone, messageBody) {
@@ -273,9 +279,9 @@ async function handleMessage(phone, messageBody) {
     case 'asking_name':      return handleAskingName(phone, messageBody, session);
     case 'active':           return handleActive(phone, messageBody, session);
     case 'waiting_for_wig': {
-      const yaAvisado = session.tempData?.wigAvisado || false;
+      const wigAvisado = session.tempData?.wigAvisado || false;
 
-      if (!yaAvisado) {
+      if (!wigAvisado) {
         // Primera vez que escribe después de escalar — avisar y marcar
         sessionManager.updateSession(phone, {
           tempData: { ...session.tempData, wigAvisado: true },
@@ -283,8 +289,34 @@ async function handleMessage(phone, messageBody) {
         return 'Ya avisé al asesor, te contactará en breve 🙌\n\nMientras tanto puedo ayudarte con lo que necesites — asesoría de productos, recomendaciones de alimento, dudas de envío. ¿En qué te ayudo?';
       }
 
-      // Mensajes siguientes — atender con Claude normal
-      return handleActive(phone, messageBody, session);
+      // Ya fue notificado — responder directamente SIN pasar por Claude
+      // para evitar que Claude vuelva a detectar escalación y genere loop
+      const msg = messageBody.trim().toLowerCase();
+
+      // Mensajes de cierre — responder y quedarse en waiting_for_wig
+      const esCierre = /^(gracias|ok|okay|de acuerdo|perfecto|listo|entendido|si|sí|👍|okey)$/i.test(msg);
+      if (esCierre) {
+        return '¡Con gusto! 🙌 El asesor te contactará en breve por aquí mismo.';
+      }
+
+      // Cualquier otra consulta real — atender con Claude pero sin detección de escalación
+      session.conversationHistory.push({ role: 'user', content: messageBody });
+      let response;
+      try {
+        response = await claudeService.chat(session.conversationHistory, session.customer);
+      } catch (err) {
+        console.error('claudeService.chat error en waiting_for_wig:', err.message);
+        return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
+      }
+
+      // Si Claude quiere escalar de nuevo — ignorar, ya está escalado
+      if (response.includes('ESCALAR_A_WIG')) {
+        return '¡Con gusto! 🙌 El asesor te contactará en breve por aquí mismo.';
+      }
+
+      session.conversationHistory.push({ role: 'assistant', content: response });
+      sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+      return response;
     }
     case 'escalated':        return handleEscalated(phone, messageBody, session);
     case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
@@ -331,6 +363,16 @@ function mencionaZonaLocal(texto) {
     .test(texto);
 }
 
+/**
+ * Detecta si el cliente es de zona local (CDMX/Edomex) por texto o por CP.
+ * Centraliza la lógica duplicada de mencionaZonaLocal + cpIsCDMX + cpIsEdomex.
+ */
+function esZonaLocal(texto = '', cp = '') {
+  if (texto && mencionaZonaLocal(texto)) return true;
+  if (cp && (cpIsCDMX(cp) || cpIsEdomex(cp))) return true;
+  return false;
+}
+
 // ── Entrega en México (números extranjeros) ────────────────────────────────────
 
 async function handleAskingEntregaMx(phone, message, session) {
@@ -350,7 +392,15 @@ async function handleAskingEntregaMx(phone, message, session) {
     return 'Entendido 🙏 Por el momento nuestros envíos son solo dentro de México. Si en algún momento consigues una dirección mexicana, con gusto te ayudamos 🌾';
   }
 
-  // Respuesta ambigua — preguntar de nuevo
+  // Respuesta ambigua — hasta 2 intentos, luego out_of_coverage
+  const intentos = (session.tempData?.entregaMxIntentos || 0) + 1;
+  if (intentos >= 2) {
+    await sessionManager.updateSession(phone, { flowState: 'out_of_coverage' });
+    return OUT_OF_COVERAGE_MSG;
+  }
+  await sessionManager.updateSession(phone, {
+    tempData: { ...session.tempData, entregaMxIntentos: intentos },
+  });
   return '¿Cuentas con una dirección de entrega en México? 📦 Con un "sí" o "no" me ayudas a orientarte mejor 😊';
 }
 
@@ -707,6 +757,7 @@ async function handleActive(phone, message, session) {
   // Agregar mensaje al historial ANTES de cualquier escalación
   // (para que generateResumen incluya el mensaje que disparó la escalación)
   session.conversationHistory.push({ role: 'user', content: message });
+  session.conversationHistory = trimHistory(session.conversationHistory);
   await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
 
   // Solicitud de empleo o RH
@@ -734,7 +785,7 @@ async function handleActive(phone, message, session) {
 
   if (cpMatch && !tieneNumeroLargo && !session.customer?.cp) {
     const cp = cpMatch[1];
-    const isLocal = cpIsCDMX(cp) || cpIsEdomex(cp);
+    const isLocal = esZonaLocal('', cp);
     const { state, city } = await sheetsService.lookupCpMX(cp);
 
     const updatedData = {
@@ -796,9 +847,7 @@ async function handleActive(phone, message, session) {
         `Cliente de ${zone} requiere atención personalizada`
       );
       if (session.customer?.rowIndex) {
-        sheetsService.updateOrderData(session.customer.rowIndex, {
-          notas: `Cliente de ${zone} — atención por asesor`,
-        }).catch(() => {});
+        sheetsService.appendNota(session.customer.rowIndex, `Cliente de ${zone} — atención por asesor`).catch(() => {});
       }
 
       if (fueraH3) {
@@ -836,6 +885,7 @@ async function handleActive(phone, message, session) {
         : 'Te llegamos por paquetería a todo México 📦 Haz tu pedido en llabanaenlinea.com 😊';
 
       session.conversationHistory.push({ role: 'assistant', content: respuesta });
+      session.conversationHistory = trimHistory(session.conversationHistory);
       await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
       sheetsService.appendConversationLog(phone, message, respuesta).catch(() => {});
       return respuesta;
@@ -947,6 +997,7 @@ async function handleActive(phone, message, session) {
   }
 
   session.conversationHistory.push({ role: 'assistant', content: response });
+  session.conversationHistory = trimHistory(session.conversationHistory);
   await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
   sheetsService.appendConversationLog(phone, message, response).catch(() => {});
 
@@ -1003,6 +1054,7 @@ async function handleEscalated(phone, message, session) {
     return 'En breve te contacta un asesor 🙌';
   }
   session.conversationHistory.push({ role: 'assistant', content: response });
+  session.conversationHistory = trimHistory(session.conversationHistory);
   await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
   return response + '\n\n_(Un asesor también te contactará en breve)_';
 }
@@ -1015,8 +1067,14 @@ async function generateResumen(conversationHistory, customer, motivo = '') {
   console.log(`🔍 generateResumen: historial=${historialFiltrado.length} msgs | motivo="${motivo}"`);
 
   if (historialFiltrado.length < 2) {
-    console.log(`🔍 generateResumen: historial corto → usando motivo`);
-    return motivo || 'Cliente requiere atención de un asesor';
+    console.log(`🔍 generateResumen: historial corto → usando último mensaje`);
+    const ultimoCliente = (conversationHistory || [])
+      .filter(m => m.role === 'user')
+      .slice(-1)[0]?.content || '';
+    const textoFallback = ultimoCliente.length > 5
+      ? `Cliente quiere ${ultimoCliente.substring(0, 80)}`
+      : motivo || 'Cliente requiere atención de un asesor';
+    return textoFallback;
   }
 
   const historial = historialFiltrado
@@ -1068,9 +1126,7 @@ async function escalateWithResumen(phone, session, motivo) {
 
   // Persistir en Sheets para sobrevivir reinicios de servidor
   if (session.customer?.rowIndex) {
-    sheetsService.updateOrderData(session.customer.rowIndex, {
-      notas: `PENDIENTE_ESCALACION: ${resumen}`,
-    }).catch(() => {});
+    sheetsService.appendNota(session.customer.rowIndex, `PENDIENTE_ESCALACION: ${resumen}`).catch(() => {});
   }
 
   session.tempData = {
@@ -1124,9 +1180,7 @@ async function handleConfirmingEscalation(phone, message, session) {
   // Todo lo demás (Sí, Si, correcto, emojis, mensajes sustanciales…) → confirmar y escalar
   const { fueraHorario: fueraH4 } = await notifyWig(phone, session, motivo, resumen);
   if (session.customer?.rowIndex) {
-    sheetsService.updateOrderData(session.customer.rowIndex, {
-      notas: resumen,
-    }).catch(() => {});
+    sheetsService.appendNota(session.customer.rowIndex, resumen).catch(() => {});
   }
 
   if (fueraH4) {
