@@ -549,6 +549,15 @@ async function handleAskingMexico(phone, message, session) {
     ]);
   }
 
+  // Detectar si el mensaje contiene una consulta real además de confirmar México
+  const msgNorm = message.trim().toLowerCase();
+  const soloConfirmacion = /^(s[ií]|sí|si|ok|okay|claro|afirma|mexico|méxico|aquí|aca|acá|desde\s+\w+)$/i.test(msgNorm);
+  if (!soloConfirmacion && message.trim().length > 5) {
+    await sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, intentPrevio: message.trim() },
+    });
+  }
+
   await sessionManager.updateSession(phone, { flowState: 'asking_name' });
   return '¿Con quién tengo el gusto? 😊';
 }
@@ -637,6 +646,13 @@ async function handleAskingName(phone, message, session) {
       tempData:  { ...session.tempData, name: nombre, nameAttempts: 0 },
       customer:  { ...session.customer, name: nombre },
     });
+
+    // Si el cliente ya dijo qué quiere antes de dar su nombre, retomar eso
+    const intentPrevio = session.tempData?.intentPrevio;
+    if (intentPrevio) {
+      return `¡Mucho gusto, ${first}! 😊 Sobre tu pregunta: "${intentPrevio}" — déjame ayudarte con eso.`;
+    }
+
     return pick([
       `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`,
       `¡Qué bueno que nos escribes, ${first}! ¿En qué te ayudo?`,
@@ -649,6 +665,9 @@ async function handleAskingName(phone, message, session) {
     await sessionManager.updateSession(phone, {
       tempData: { ...session.tempData, nameAttempts: attempts + 1 },
     });
+    if (attempts === 0 && session.tempData?.intentPrevio) {
+      return '¿Con quién tengo el gusto? 😊 En cuanto me digas tu nombre te ayudo con eso.';
+    }
     return '¿Me dices tu nombre? Por ejemplo: Juan o María 😊';
   }
 
