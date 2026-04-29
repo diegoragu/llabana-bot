@@ -198,8 +198,14 @@ async function chat(history, customer) {
 
   // Cargar Knowledge Base y catálogo completo en paralelo
   const [kb, productos] = await Promise.all([
-    knowledgeService.getKnowledgeBase(),
-    knowledgeService.getAllProductos(),
+    knowledgeService.getKnowledgeBase().catch(err => {
+      console.error('⚠️ KB no disponible:', err.message);
+      return '';
+    }),
+    knowledgeService.getAllProductos().catch(err => {
+      console.error('⚠️ Productos no disponibles:', err.message);
+      return '';
+    }),
   ]);
 
   // Sistema dinámico: KB del Sheets si está disponible, SYSTEM_BASE como fallback
@@ -224,7 +230,7 @@ async function chat(history, customer) {
     messages:   recentHistory,
   });
 
-  const respuesta = response.content[0].text.trim();
+  const respuesta = response.content?.[0]?.text?.trim() || '';
 
   // Detectar señales de que el bot no supo ayudar
   const NO_SUPO = [

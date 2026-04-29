@@ -25,6 +25,22 @@ const MAX_SIDS = 100;
 
 const chatLogs = new Map();
 
+// Limpiar chatLogs inactivos cada 2 horas
+setInterval(() => {
+  const DOS_HORAS = 2 * 60 * 60 * 1000;
+  const ahora = Date.now();
+  let limpiados = 0;
+  for (const [phone, log] of chatLogs.entries()) {
+    if (ahora - (log.lastActivity || 0) > DOS_HORAS) {
+      chatLogs.delete(phone);
+      limpiados++;
+    }
+  }
+  if (limpiados > 0) {
+    console.log(`🧹 chatLogs limpiados: ${limpiados} entradas | quedan: ${chatLogs.size}`);
+  }
+}, 2 * 60 * 60 * 1000).unref();
+
 // Debounce: { from → { timer, messages[] } }
 const pendingMessages = new Map();
 

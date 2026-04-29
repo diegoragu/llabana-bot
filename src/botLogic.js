@@ -1042,13 +1042,15 @@ async function generateResumen(conversationHistory, customer, motivo = '') {
           `Conversación:\n${historial}\n\nResumen (empieza con Cliente quiere o Cliente necesita):`,
       }],
     });
-    const texto = response.content[0].text.trim()
+    const texto = (response.content?.[0]?.text || '')
+      .trim()
       .replace(/^["'`]|["'`]$/g, '')
       .replace(/\.$/, '')
       .replace(/^(resumen:|summary:)/i, '')
       .trim()
       .substring(0, 120);
 
+    if (!texto) console.warn('⚠️ generateResumen: Claude devolvió respuesta vacía');
     console.log(`🔍 generateResumen: resultado="${texto}"`);
     return texto || motivo || 'Cliente requiere atención de un asesor';
   } catch (err) {

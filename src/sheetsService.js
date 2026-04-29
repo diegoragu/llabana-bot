@@ -736,8 +736,11 @@ function columnLetter(index) {
  * Retorna { state, city } — strings vacíos si el CP no se encuentra o hay error.
  */
 async function lookupCpMX(cp) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const res = await fetch(`https://api.zippopotam.us/MX/${cp}`);
+    const res = await fetch(`https://api.zippopotam.us/MX/${cp}`, { signal: controller.signal });
+    clearTimeout(timeoutId);
     if (!res.ok) return { state: '', city: '' };
     const data = await res.json();
     const place = data.places?.[0];
@@ -749,7 +752,11 @@ async function lookupCpMX(cp) {
 
     const city = place['place name'] || '';
     return { state, city };
-  } catch {
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      console.warn('⚠️ lookupCpMX timeout — servicio de CP no disponible');
+    }
     return { state: '', city: '' };
   }
 }
