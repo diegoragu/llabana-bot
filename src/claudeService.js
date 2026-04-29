@@ -170,7 +170,7 @@ Si no hay equivalente → ENTONCES escala.
 Nunca digas "no tengo ese producto" sin antes buscar una alternativa en el catálogo.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
-async function chat(history, customer, query = '') {
+async function chat(history, customer) {
   let customerContext = '';
   if (customer) {
     const channelLabel = customer.channel === 'paqueteria'
@@ -196,10 +196,10 @@ async function chat(history, customer, query = '') {
     customerContext = '\n' + lines.join('\n');
   }
 
-  // Cargar Knowledge Base y productos relevantes en paralelo
+  // Cargar Knowledge Base y catálogo completo en paralelo
   const [kb, productos] = await Promise.all([
     knowledgeService.getKnowledgeBase(),
-    query ? knowledgeService.getProductosPorEspecie(query) : Promise.resolve(''),
+    knowledgeService.getAllProductos(),
   ]);
 
   // Sistema dinámico: KB del Sheets si está disponible, SYSTEM_BASE como fallback

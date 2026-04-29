@@ -767,8 +767,7 @@ async function handleActive(phone, message, session) {
       try {
         claudeResp = await claudeService.chat(
           session.conversationHistory,
-          session.customer,
-          message
+          session.customer
         );
       } catch (err) {
         console.error('claudeService.chat error (CP nacional):', err.message);
@@ -813,8 +812,7 @@ async function handleActive(phone, message, session) {
   try {
     response = await claudeService.chat(
       session.conversationHistory,
-      session.customer,
-      message
+      session.customer
     );
   } catch (err) {
     console.error('claudeService.chat error:', err.message);

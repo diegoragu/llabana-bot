@@ -148,6 +148,45 @@ async function getProductosPorEspecie(query) {
   }
 }
 
+async function getAllProductos() {
+  const now = Date.now();
+  if (_prodCache?.['__all__'] && _prodCacheTime && now - _prodCacheTime < 10 * 60 * 1000) {
+    return _prodCache['__all__'];
+  }
+  try {
+    const sheets = await getSheets();
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET_PRODUCTOS}!A:K`,
+    });
+    const rows = (res.data.values || []).slice(1);
+    const texto = rows
+      .filter(r => r[1])
+      .map(r => [
+        `• ${r[1] || ''}`,
+        r[3]  ? `Marca: ${r[3]}`        : '',
+        r[2]  ? `Especie: ${r[2]}`      : '',
+        r[0]  ? `Precio: $${r[0]}`      : '',
+        r[4]  ? `Presentación: ${r[4]}` : '',
+        r[5]  ? `Peso: ${r[5]}`         : '',
+        r[7]  ? `Ideal para: ${r[7]}`   : '',
+        r[8]  ? `Etapa: ${r[8]}`        : '',
+        r[9]  ? `Keywords: ${r[9]}`     : '',
+        r[10] ? `Link: ${r[10]}`        : '',
+      ].filter(Boolean).join(' | '))
+      .join('\n');
+
+    if (!_prodCache) _prodCache = {};
+    _prodCache['__all__'] = texto;
+    _prodCacheTime = now;
+    console.log(`📦 Catálogo completo cargado: ${rows.filter(r => r[1]).length} productos`);
+    return texto;
+  } catch (err) {
+    console.error('knowledgeService.getAllProductos error:', err.message);
+    return '';
+  }
+}
+
 /**
  * Invalida el cache — llamar cuando se actualice el Sheets.
  */
@@ -159,4 +198,4 @@ function invalidateCache() {
   console.log('📚 Cache de Knowledge Base invalidado');
 }
 
-module.exports = { getKnowledgeBase, getProductosPorEspecie, invalidateCache };
+module.exports = { getKnowledgeBase, getProductosPorEspecie, getAllProductos, invalidateCache };
