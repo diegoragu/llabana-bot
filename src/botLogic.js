@@ -246,9 +246,9 @@ async function handleMessage(phone, messageBody) {
     const esMexicano = phone.startsWith('whatsapp:+521') ||
                        phone.startsWith('whatsapp:+52');
     if (!esMexicano) {
-      await sessionManager.updateSession(phone, { flowState: 'out_of_coverage' });
-      console.log(`🌎 Número extranjero bloqueado: ${phone}`);
-      return OUT_OF_COVERAGE_MSG;
+      await sessionManager.updateSession(phone, { flowState: 'asking_entrega_mx' });
+      console.log(`🌎 Número extranjero — preguntando dirección MX: ${phone}`);
+      return 'Hola 👋 Nosotros entregamos a cualquier dirección en México 📦 ¿Tienes una dirección en México donde podamos enviarte el pedido?';
     }
 
     await sessionManager.updateSession(phone, { flowState: 'asking_mexico' });
@@ -277,6 +277,7 @@ async function handleMessage(phone, messageBody) {
     case 'escalated':        return handleEscalated(phone, messageBody, session);
     case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
     case 'confirming_escalation':   return handleConfirmingEscalation(phone, messageBody, session);
+    case 'asking_entrega_mx': return handleAskingEntregaMx(phone, messageBody, session);
     case 'out_of_coverage':         return 'Con gusto te ayudamos cuando estés en México 🌾';
     default:
       await sessionManager.deleteSession(phone);
@@ -318,6 +319,29 @@ function mencionaZonaLocal(texto) {
     .test(texto);
 }
 
+// ── Entrega en México (números extranjeros) ────────────────────────────────────
+
+async function handleAskingEntregaMx(phone, message, session) {
+  const msg = message.trim().toLowerCase();
+  const esSi = /^s[ií]|tengo|sí|si |claro|afirma|confirm|ok|okay/.test(msg);
+  const esNo = /^no\b|no tengo|no cuento|no hay/.test(msg);
+
+  if (esSi) {
+    // Tiene dirección en México — continuar como cliente normal
+    await sessionManager.updateSession(phone, { flowState: 'asking_name', tempData: { ...session.tempData, nameAttempts: 0 } });
+    return '¡Perfecto! 😊 ¿Con quién tengo el gusto?';
+  }
+
+  if (esNo) {
+    // No tiene dirección en México — cerrar amablemente
+    await sessionManager.deleteSession(phone);
+    return 'Entendido 🙏 Por el momento nuestros envíos son solo dentro de México. Si en algún momento consigues una dirección mexicana, con gusto te ayudamos 🌾';
+  }
+
+  // Respuesta ambigua — preguntar de nuevo
+  return '¿Cuentas con una dirección de entrega en México? 📦 Con un "sí" o "no" me ayudas a orientarte mejor 😊';
+}
+
 // ── Filtro México ─────────────────────────────────────────────────────────────
 
 async function handleAskingMexico(phone, message, session) {
@@ -327,20 +351,8 @@ async function handleAskingMexico(phone, message, session) {
   }
 
   if (!phone.startsWith('whatsapp:+52')) {
-    // Solo notificar si viene de un link de tracking (cliente real interesado)
-    // Números extranjeros que llegan directo generalmente son spam o error
-    if (session.tempData?.entryPoint && session.tempData.entryPoint !== 'Directo') {
-      const { fueraHorario } = await notifyWig(phone, session,
-        `Número extranjero via ${session.tempData.entryPoint}: ${phone}`,
-        'Cliente con número extranjero');
-      await sessionManager.updateSession(phone, {
-        flowState: fueraHorario ? 'active' : 'waiting_for_wig',
-        ...(fueraHorario ? { tempData: { ...session.tempData, escalacionPendiente: true } } : {}),
-      });
-    } else {
-      await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-    }
-    return 'Veo que tu número no es de México 🌎 Te voy a conectar con un asesor.';
+    await sessionManager.updateSession(phone, { flowState: 'asking_entrega_mx' });
+    return 'Hola 👋 Nosotros entregamos a cualquier dirección en México 📦 ¿Tienes una dirección en México donde podamos enviarte el pedido?';
   }
 
   // Detectar estado/ciudad mexicana → saltar confirmación de México
