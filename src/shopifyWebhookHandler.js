@@ -328,6 +328,8 @@ async function handleOrderPaid(payload) {
     return;
   }
 
+  console.log(`   orders/paid payload phones: customer=${payload.customer?.phone} | shipping=${payload.shipping_address?.phone} | billing=${payload.billing_address?.phone}`);
+
   let customer = await sheetsService.findCustomerByEmail(email);
 
   // Fallback: buscar por teléfono si no encontró por email
