@@ -166,6 +166,10 @@ function limpiarNombre(nombre) {
   n = n.replace(/^(el\s+se[ñn]or|la\s+se[ñn]ora|don|do[ñn]a|sr\.?|sra\.?)\s+/i, '').trim();
   if (!n) return '';
 
+  // Rechazar si la primera palabra es preposición/artículo standalone
+  // Evita capturar "De Tepic Nayarit" como nombre "De"
+  if (/^(de|del|la|el|los|las|un|una)$/i.test(n.split(' ')[0])) return '';
+
   // Contiene palabras que no son nombres
   const nonName = /\b(hola|buenos?\s*d[ií]as?|buenas?\s*(tardes?|noches?)|quiero|precio|info(rmaci[oó]n)?|cu[aá]nto|c[oó]mo|gracias|tengo|busco|necesito|vendo|compro)\b/i;
   if (nonName.test(n)) return '';
@@ -354,6 +358,30 @@ async function updateOrderData(rowIndex, { totalOrders, totalSpent, segmento, fe
   } catch (err) {
     console.error('sheetsService.updateOrderData error:', err.message);
     throw err;
+  }
+}
+
+/**
+ * Añade texto a la celda NOTAS del cliente sin sobrescribir lo existente.
+ * Lee el valor actual primero y concatena con " | ".
+ */
+async function appendNota(rowIndex, nota) {
+  if (!rowIndex || !nota) return;
+  try {
+    const sheets = await getSheets();
+    const col = columnLetter(BASE.NOTAS);
+    const range = `${SHEET_BASE}!${col}${rowIndex}`;
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range });
+    const actual = res.data.values?.[0]?.[0] || '';
+    const nuevo = actual ? `${actual} | ${nota}` : nota;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: [[nuevo]] },
+    });
+  } catch (err) {
+    console.error('sheetsService.appendNota error:', err.message);
   }
 }
 
@@ -772,6 +800,7 @@ module.exports = {
   updateCustomerPhone,
   updateCustomerEmail,
   updateOrderData,
+  appendNota,
   appendConversationLog,
   updateSegmento,
   appendTag,
