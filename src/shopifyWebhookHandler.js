@@ -102,7 +102,25 @@ async function handleCustomerCreate(payload) {
 
   console.log(`   customers/create: ${email} | state=${accountState}`);
 
-  const existing = await sheetsService.findCustomerByEmail(email);
+  let existing = await sheetsService.findCustomerByEmail(email);
+
+  if (!existing && payload.phone) {
+    existing = await sheetsService.findCustomer(payload.phone);
+    if (existing) {
+      console.log(`   customers/create: ${email} encontrado por teléfono → actualizando email y no creando duplicado`);
+      // Actualizar email si no lo tenía
+      if (!existing.email) {
+        await sheetsService.updateCustomerEmail(existing.rowIndex, email);
+      }
+      await sheetsService.appendTag(existing.rowIndex, 'Solo cuenta');
+      if (acceptsMarketing) {
+        await sheetsService.updateEmailMarketing(existing.rowIndex, 'SI');
+      }
+      return; // No crear fila nueva
+    }
+  }
+
+  // Si no encontró ni por email ni por teléfono → registrar como nuevo (código existente continúa)
 
   if (existing) {
     const segExistente = existing.segmento || '';
