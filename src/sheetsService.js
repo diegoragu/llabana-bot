@@ -523,7 +523,7 @@ async function updateCustomerPhone(rowIndex, phone) {
 // Tags válidos — solo estos valores pueden guardarse en Historial de tags
 const VALID_TAGS = new Set([
   'Solo cuenta', 'Carrito abandonado', 'Compro', 'Recompra', 'newsletter',
-  'Reparto', 'No Contestó', 'Sucursal',
+  'Reparto', 'No Contestó', 'Sucursal', 'Asesorado Bot', 'Convertido Bot',
 ]);
 
 // Detecta cadenas que parecen fechas (YYYY-MM-DD, DD/MM/YYYY, YYYY-MM-DD HH:MM, etc.)

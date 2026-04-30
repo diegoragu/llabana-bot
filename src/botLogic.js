@@ -1001,6 +1001,11 @@ async function handleActive(phone, message, session) {
   await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
   sheetsService.appendConversationLog(phone, message, response).catch(() => {});
 
+  // Si el bot recomendó un producto (tiene link de la tienda), taggear como asesorado
+  if (response.includes('llabanaenlinea.com') && session.customer?.rowIndex) {
+    sheetsService.appendTag(session.customer.rowIndex, 'Asesorado Bot').catch(() => {});
+  }
+
   return response;
 }
 

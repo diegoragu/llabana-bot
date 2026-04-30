@@ -413,6 +413,13 @@ async function handleOrderPaid(payload) {
   await sheetsService.updateOrderData(customer.rowIndex, updateFields);
   await sheetsService.appendTag(customer.rowIndex, tag);
 
+  // Si fue asesorado por el bot y ahora compra → marcar como conversión del bot
+  const tagsActuales = customer.tags || '';
+  if (tagsActuales.includes('Asesorado Bot')) {
+    await sheetsService.appendTag(customer.rowIndex, 'Convertido Bot');
+    console.log(`   🎯 orders/paid: ${email} → Convertido Bot (fue asesorado por el bot antes de comprar)`);
+  }
+
   console.log(`   ✅ orders/paid: ${email} → ${segmento} | Órdenes: ${newOrders} | Total: ${newSpent}`);
 }
 
