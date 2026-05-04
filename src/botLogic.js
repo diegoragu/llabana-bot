@@ -751,7 +751,14 @@ async function handleActive(phone, message, session) {
       phone, message,
       '[info adicional — escalación pendiente]'
     ).catch(() => {});
-    return 'Anotado 📝 Le paso esa info al asesor cuando te contacte.';
+    const wigAvisado = session.tempData?.wigAvisado || false;
+    if (!wigAvisado) {
+      await sessionManager.updateSession(phone, {
+        tempData: { ...session.tempData, wigAvisado: true },
+      });
+      return 'Ya avisé al asesor, te contactará cuando inicien operaciones 🙌\n\nMientras tanto puedo ayudarte con lo que necesites — asesoría de productos, recomendaciones de alimento, dudas de envío. ¿En qué te ayudo?';
+    }
+    return '¡Con gusto! 🙌 El asesor te contactará cuando inicien operaciones por aquí mismo.';
   }
 
   // Agregar mensaje al historial ANTES de cualquier escalación
