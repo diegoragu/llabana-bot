@@ -1051,24 +1051,43 @@ async function handleWaitingForWig(phone, message, session) {
 }
 
 async function handleEscalated(phone, message, session) {
+  // Despedida → cerrar amablemente
   if (DESPEDIDA_PATTERNS.test(message.trim())) {
-    return '¡Hasta luego! 🌾';
+    return '¡Hasta luego! 🌾 Cuando necesites algo más, aquí estamos.';
   }
 
-  session.conversationHistory.push({ role: 'user', content: message });
+  // Mensajes de cierre/agradecimiento → responder sin llamar a Claude
+  const esCierre = /^(gracias|ok|okay|de acuerdo|perfecto|listo|entendido|espero|👍|okey|bien|claro)$/i.test(message.trim());
+  if (esCierre) {
+    return 'Un asesor te contactará en breve por aquí mismo 🙌 Mientras tanto puedo ayudarte con dudas de productos o envíos. ¿Necesitas algo más?';
+  }
+
+  // Tomar solo los últimos 6 mensajes del historial para no contaminar el contexto
+  const historialLimpio = (session.conversationHistory || [])
+    .filter(m => !m.content?.includes('ESCALAR_A_WIG'))
+    .slice(-6);
+
+  historialLimpio.push({ role: 'user', content: message });
+
   let response;
   try {
-    response = await claudeService.chat(session.conversationHistory, session.customer);
+    response = await claudeService.chat(historialLimpio, session.customer);
   } catch {
     response = 'En breve te contacta un asesor para ayudarte 🙌';
   }
+
+  // Si Claude quiere escalar de nuevo → ya está escalado, solo confirmar
   if (response.includes('ESCALAR_A_WIG')) {
-    return 'En breve te contacta un asesor 🙌';
+    return 'Ya tienes un asesor asignado, te contactará en breve 🙌';
   }
+
+  // Respuesta normal de Claude — guardar en historial real
+  session.conversationHistory.push({ role: 'user', content: message });
   session.conversationHistory.push({ role: 'assistant', content: response });
   session.conversationHistory = trimHistory(session.conversationHistory);
   await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
-  return response + '\n\n_(Un asesor también te contactará en breve)_';
+
+  return response;
 }
 
 // ── Resumen y escalación con confirmación ─────────────────────────────────────
