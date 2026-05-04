@@ -1056,15 +1056,16 @@ async function handleEscalated(phone, message, session) {
     return '¡Hasta luego! 🌾 Cuando necesites algo más, aquí estamos.';
   }
 
-  // Mensajes de cierre/agradecimiento → responder sin llamar a Claude
-  const esCierre = /^(gracias|ok|okay|de acuerdo|perfecto|listo|entendido|espero|👍|okey|bien|claro)$/i.test(message.trim());
+  // Mensajes de cierre/agradecimiento → dar seguridad sin llamar a Claude
+  const esCierre = /^(gracias|ok|okay|de acuerdo|perfecto|listo|entendido|espero|👍|okey|bien|claro|si|sí)$/i.test(message.trim());
   if (esCierre) {
-    return 'Un asesor te contactará en breve por aquí mismo 🙌 Mientras tanto puedo ayudarte con dudas de productos o envíos. ¿Necesitas algo más?';
+    const cuando = horarioService.proximoDiaHabil();
+    return `Tu caso ya quedó registrado 🙌 Nuestros asesores te contactarán ${cuando} a primera hora por este mismo WhatsApp.\n\nMientras tanto puedo ayudarte con dudas de productos, precios o envíos. ¿En qué te oriento?`;
   }
 
-  // Tomar solo los últimos 6 mensajes del historial para no contaminar el contexto
+  // Tomar solo los últimos 6 mensajes del historial filtrando ruido de escalación
   const historialLimpio = (session.conversationHistory || [])
-    .filter(m => !m.content?.includes('ESCALAR_A_WIG'))
+    .filter(m => !m.content?.includes('ESCALAR_A_WIG') && !m.content?.includes('Antes de conectarte'))
     .slice(-6);
 
   historialLimpio.push({ role: 'user', content: message });
@@ -1073,15 +1074,16 @@ async function handleEscalated(phone, message, session) {
   try {
     response = await claudeService.chat(historialLimpio, session.customer);
   } catch {
-    response = 'En breve te contacta un asesor para ayudarte 🙌';
+    response = 'Tu caso ya quedó registrado 🙌 Un asesor te contactará a primera hora por este mismo WhatsApp.';
   }
 
-  // Si Claude quiere escalar de nuevo → ya está escalado, solo confirmar
+  // Si Claude quiere escalar de nuevo → ya está escalado, dar seguridad
   if (response.includes('ESCALAR_A_WIG')) {
-    return 'Ya tienes un asesor asignado, te contactará en breve 🙌';
+    const cuando = horarioService.proximoDiaHabil();
+    return `Tu caso ya quedó registrado ✅ Nuestros asesores te contactarán ${cuando} a primera hora.\n\n¿Hay algo más en lo que te pueda ayudar mientras tanto?`;
   }
 
-  // Respuesta normal de Claude — guardar en historial real
+  // Respuesta normal de Claude
   session.conversationHistory.push({ role: 'user', content: message });
   session.conversationHistory.push({ role: 'assistant', content: response });
   session.conversationHistory = trimHistory(session.conversationHistory);
