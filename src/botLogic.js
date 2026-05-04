@@ -328,6 +328,7 @@ async function handleMessage(phone, messageBody) {
     }
     case 'escalated':        return handleEscalated(phone, messageBody, session);
     case 'asking_cp_before_escalation': return handleAskingCpBeforeEscalation(phone, messageBody, session);
+    case 'confirming_name':  return handleConfirmingName(phone, messageBody, session);
     case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
     case 'confirming_escalation':   return handleConfirmingEscalation(phone, messageBody, session);
     case 'asking_entrega_mx': return handleAskingEntregaMx(phone, messageBody, session);
@@ -700,23 +701,12 @@ async function handleAskingName(phone, message, session) {
         console.error(`❌ [NOMBRE] Error en fallback registro:`, err.message);
       });
     }
-    await sessionManager.updateSession(phone, {
-      flowState: 'active',
-      tempData:  { ...session.tempData, name: nombre, nameAttempts: 0 },
-      customer:  { ...session.customer, name: nombre },
+    // Guardar nombre temporalmente y pedir confirmación
+    sessionManager.updateSession(phone, {
+      flowState: 'confirming_name',
+      tempData:  { ...session.tempData, namePendiente: nombre, nameAttempts: 0 },
     });
-
-    // Si el cliente ya dijo qué quiere antes de dar su nombre, retomar eso
-    const intentPrevio = session.tempData?.intentPrevio;
-    if (intentPrevio) {
-      return `¡Mucho gusto, ${first}! 😊 Sobre tu pregunta: "${intentPrevio}" — déjame ayudarte con eso.`;
-    }
-
-    return pick([
-      `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`,
-      `¡Qué bueno que nos escribes, ${first}! ¿En qué te ayudo?`,
-      `Gracias ${first} 🌾 ¿Qué necesitas hoy?`,
-    ]);
+    return `Solo para confirmar — ¿tu nombre es *${nombre}*? 😊`;
   }
 
   // Nombre inválido
@@ -1395,6 +1385,69 @@ async function handleMediaMessage(phone) {
   }
 
   return '¡Hola! 👋 Soy el asistente de Llabana, tu aliado en alimento balanceado 🌾\nRecibí tu imagen pero no puedo verla 😅 ¿Me cuentas qué producto te interesa o en qué te puedo ayudar? ¿Estás en México?';
+}
+
+// ── Confirmar nombre ──────────────────────────────────────────────────────────
+
+async function handleConfirmingName(phone, message, session) {
+  const msg = message.trim().toLowerCase();
+
+  // Confirmación positiva
+  const esConfirmacion = /^(s[ií]|sí|si|correcto|exact|ok|okay|claro|así|eso|👍|afirma)/.test(msg);
+
+  // Corrección — el cliente da un nombre diferente
+  const nombreNuevo = sheetsService.limpiarNombre(message);
+
+  if (esConfirmacion || (!nombreNuevo && !esConfirmacion)) {
+    // Confirmó o no dijo nada reconocible — usar el nombre pendiente
+    const nombre = session.tempData?.namePendiente || '';
+    const first  = primerNombre(nombre);
+
+    if (session.customer?.rowIndex) {
+      sheetsService.updateOrderData(session.customer.rowIndex, { name: nombre }).catch(() => {});
+    }
+    await sessionManager.updateSession(phone, {
+      flowState: 'active',
+      tempData:  { ...session.tempData, name: nombre, namePendiente: undefined },
+      customer:  { ...session.customer, name: nombre },
+    });
+
+    const intentPrevio = session.tempData?.intentPrevio;
+    if (intentPrevio) {
+      return `¡Mucho gusto, ${first}! 😊 Sobre tu pregunta anterior — déjame ayudarte con eso.`;
+    }
+    return pick([
+      `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`,
+      `¡Qué bueno que nos escribes, ${first}! ¿En qué te ayudo?`,
+      `Gracias ${first} 🌾 ¿Qué necesitas hoy?`,
+    ]);
+  }
+
+  if (nombreNuevo) {
+    // El cliente dio un nombre diferente — usar el nuevo
+    const first = primerNombre(nombreNuevo);
+    if (session.customer?.rowIndex) {
+      sheetsService.updateOrderData(session.customer.rowIndex, { name: nombreNuevo }).catch(() => {});
+    }
+    await sessionManager.updateSession(phone, {
+      flowState: 'active',
+      tempData:  { ...session.tempData, name: nombreNuevo, namePendiente: undefined },
+      customer:  { ...session.customer, name: nombreNuevo },
+    });
+
+    const intentPrevio = session.tempData?.intentPrevio;
+    if (intentPrevio) {
+      return `¡Mucho gusto, ${first}! 😊 Sobre tu pregunta anterior — déjame ayudarte con eso.`;
+    }
+    return pick([
+      `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`,
+      `¡Qué bueno que nos escribes, ${first}! ¿En qué te ayudo?`,
+      `Gracias ${first} 🌾 ¿Qué necesitas hoy?`,
+    ]);
+  }
+
+  // No se pudo determinar — preguntar de nuevo
+  return '¿Me confirmas tu nombre? 😊';
 }
 
 module.exports = { handleMessage, handleMediaMessage };

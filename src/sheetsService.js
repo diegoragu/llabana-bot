@@ -161,7 +161,7 @@ function limpiarNombre(nombre) {
 
   // Quitar prefijos comunes que no forman parte del nombre
   // Ejemplo: "Soy Héctor" → "Héctor", "Me llamo María" → "María"
-  n = n.replace(/^(con|soy|me\s+llamo|mi\s+nombre\s+es|es)\s+/i, '').trim();
+  n = n.replace(/^(con|soy|me\s+llamo|mi\s+nombre\s+(completo\s+)?es|es)\s+/i, '').trim();
   // Quitar títulos y tratamientos: "el Señor", "la Señora", "don", "doña", "el", "la"
   n = n.replace(/^(el\s+se[ñn]or|la\s+se[ñn]ora|don|do[ñn]a|sr\.?|sra\.?)\s+/i, '').trim();
   if (!n) return '';
