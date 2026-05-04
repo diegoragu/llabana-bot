@@ -252,11 +252,19 @@ async function handleMessage(phone, messageBody) {
         });
         return '¡Hola! 👋 ¿Con quién tengo el gusto?';
       }
-      // Cliente existente con nombre → procesar primer mensaje con Claude
+      // Cliente existente con nombre → verificar si el mensaje es solo un entry point
       await sessionManager.updateSession(phone, {
         flowState: 'active',
         customer:  customerData,
       });
+
+      // Si el mensaje es un entry point conocido → saludar sin pasarlo a Claude
+      const esEntryPoint = detectarOrigen(messageBody) !== 'Directo';
+      if (esEntryPoint) {
+        return `¡Hola ${nombre}! 👋 Qué gusto verte de nuevo. ¿En qué te puedo ayudar hoy?`;
+      }
+
+      // Si es un mensaje real → procesarlo con Claude
       return handleActive(phone, messageBody, await sessionManager.getSession(phone));
     }
 
