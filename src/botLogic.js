@@ -327,6 +327,7 @@ async function handleMessage(phone, messageBody) {
       return response;
     }
     case 'escalated':        return handleEscalated(phone, messageBody, session);
+    case 'asking_cp_before_escalation': return handleAskingCpBeforeEscalation(phone, messageBody, session);
     case 'confirming_reset':        return handleConfirmingReset(phone, messageBody, session);
     case 'confirming_escalation':   return handleConfirmingEscalation(phone, messageBody, session);
     case 'asking_entrega_mx': return handleAskingEntregaMx(phone, messageBody, session);
@@ -996,7 +997,37 @@ async function handleActive(phone, message, session) {
       `mensaje="${message.substring(0, 100)}" | ` +
       `historial=${session.conversationHistory.length} msgs`
     );
-    return escalateWithResumen(phone, session, 'Detectado por Claude');
+
+    const cpGuardado = session.customer?.cp || '';
+
+    // Si no tiene CP → pedirlo antes de escalar
+    if (!cpGuardado) {
+      sessionManager.updateSession(phone, {
+        flowState: 'asking_cp_before_escalation',
+        tempData: { ...session.tempData, pendingEscalation: true },
+      });
+      return '¿Cuál es tu código postal? 📍 Con eso te digo si te atendemos por paquetería o con un asesor directo.';
+    }
+
+    // Ya tiene CP → usarlo directamente
+    const cpNum  = parseInt(cpGuardado.replace(/\D/g, ''), 10);
+    const prefix = parseInt(String(cpNum).padStart(5, '0').substring(0, 2), 10);
+    const esLocal = (cpNum >= 1000 && cpNum <= 16999) || (prefix >= 50 && prefix <= 57);
+
+    if (esLocal) {
+      await notifyWig(phone, session, `CP guardado: ${cpGuardado} — zona local`);
+      sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+      const nombre = primerNombre(session.customer?.name || '');
+      return nombre
+        ? `¡Listo, ${nombre}! 😊 Un asesor te contactará en breve por este mismo WhatsApp.`
+        : '¡Listo! 😊 Un asesor te contactará en breve por este mismo WhatsApp.';
+    }
+
+    // CP foráneo → cerrar con tienda sin escalar
+    const nombre = primerNombre(session.customer?.name || '');
+    return nombre
+      ? `${pick(CHANNEL_VARIANTS)(nombre)} ${pick(CLOSING_VARIANTS)}`
+      : `Te mandamos por paquetería a todo México 📦 Haz tu pedido en llabanaenlinea.com ${pick(CLOSING_VARIANTS)}`;
   }
 
   // Contar productos no encontrados — escalar tras 2 respuestas sin catálogo
@@ -1022,6 +1053,49 @@ async function handleActive(phone, message, session) {
   }
 
   return response;
+}
+
+// ── CP antes de escalar ───────────────────────────────────────────────────────
+
+async function handleAskingCpBeforeEscalation(phone, message, session) {
+  const cp = message.trim().replace(/\D/g, '');
+  if (cp.length < 4 || cp.length > 5) {
+    return '¿Cuál es tu código postal? 📍 Son 5 dígitos, por ejemplo: 06600';
+  }
+
+  // Guardar CP en Sheets si tiene rowIndex
+  if (session.customer?.rowIndex) {
+    const { state, city } = await sheetsService.lookupCpMX(cp);
+    await sheetsService.updateOrderData(session.customer.rowIndex, {
+      cp,
+      ...(state ? { state } : {}),
+      ...(city  ? { city  } : {}),
+    });
+    session.customer.cp    = cp;
+    session.customer.state = state || session.customer.state;
+    session.customer.city  = city  || session.customer.city;
+    await sessionManager.updateSession(phone, { customer: session.customer });
+  }
+
+  const cpNum   = parseInt(cp, 10);
+  const prefix  = parseInt(cp.padStart(5, '0').substring(0, 2), 10);
+  const esLocal = (cpNum >= 1000 && cpNum <= 16999) || (prefix >= 50 && prefix <= 57);
+
+  const nombre = primerNombre(session.customer?.name || '');
+
+  if (esLocal) {
+    await notifyWig(phone, session, `CP ${cp} — zona local (primer compra cliente existente)`);
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    return nombre
+      ? `¡Listo, ${nombre}! 😊 Un asesor te contactará en breve por este mismo WhatsApp.`
+      : '¡Listo! 😊 Un asesor te contactará en breve por este mismo WhatsApp.';
+  }
+
+  // CP foráneo → cerrar con tienda
+  sessionManager.updateSession(phone, { flowState: 'active' });
+  return nombre
+    ? `${pick(CHANNEL_VARIANTS)(nombre)} ${pick(CLOSING_VARIANTS)}`
+    : `Te mandamos por paquetería a todo México 📦 Haz tu pedido en llabanaenlinea.com`;
 }
 
 // ── Confirmar reset ───────────────────────────────────────────────────────────
