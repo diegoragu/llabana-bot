@@ -932,6 +932,29 @@ async function handleActive(phone, message, session) {
     }
   }
 
+  // Detectar respuesta a oferta de cotizar camión (pendingCanalMedio)
+  if (session.tempData?.pendingCanalMedio) {
+    const msg = messageBody.trim().toLowerCase();
+    const quiereCotizar = /^(s[ií]|sí|ok|claro|si|afirma|me interesa|cotiza|dale)$/i.test(msg);
+    const noquiereCotizar = /^no\b/i.test(msg);
+
+    if (quiereCotizar) {
+      await sessionManager.updateSession(phone, {
+        flowState: 'waiting_for_wig',
+        tempData: { ...session.tempData, pendingCanalMedio: false },
+      });
+      await notifyWig(phone, session, `Provincia — cantidad intermedia (11-499 bultos) — quiere cotizar camión`);
+      return 'Perfecto 🙌 Un asesor te contactará para cotizar el flete según tu volumen y destino.';
+    }
+
+    if (noquiereCotizar) {
+      await sessionManager.updateSession(phone, {
+        tempData: { ...session.tempData, pendingCanalMedio: false },
+      });
+      return 'Entendido 😊 Puedes hacer pedidos parciales en llabanaenlinea.com — máximo 10 bultos por pedido 🛒\n¿Te ayudo a encontrar el producto directo?';
+    }
+  }
+
   // Conversación con Claude
   // (el mensaje ya fue agregado al historial antes de los checks de escalación)
 
@@ -944,6 +967,18 @@ async function handleActive(phone, message, session) {
   } catch (err) {
     console.error('claudeService.chat error:', err.message);
     return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
+  }
+
+  // Detectar si el cliente mencionó una cantidad de bultos o toneladas
+  const cantidadMatch = messageBody.match(/(\d+)\s*(bultos?|costales?|sacos?|toneladas?|tons?|kg|kilos?)/i);
+  if (cantidadMatch) {
+    let cantidad = parseInt(cantidadMatch[1]);
+    const unidad = cantidadMatch[2].toLowerCase();
+    if (/ton/.test(unidad)) cantidad = cantidad * 40;
+    if (/kg|kilo/.test(unidad)) cantidad = Math.ceil(cantidad / 25);
+    sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, cantidadBultos: cantidad },
+    });
   }
 
   // Eliminar saludos dobles — Claude a veces genera saludos o empieza con el nombre
@@ -1133,7 +1168,28 @@ async function handleAskingCpBeforeEscalation(phone, message, session) {
       : '¡Listo! 😊 Un asesor te contactará en breve por este mismo WhatsApp.';
   }
 
-  // CP foráneo → cerrar con tienda
+  // CP foráneo — verificar cantidad antes de cerrar
+  const cantidadSesion = session.tempData?.cantidadBultos || 0;
+
+  if (cantidadSesion >= 500) {
+    // 500+ bultos en provincia → camión completo → escalar
+    await notifyWig(phone, session, `CP foráneo ${cp} — mayoreo real: ${cantidadSesion} bultos`);
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    return nombre
+      ? `¡Listo, ${nombre}! 😊 Un asesor te contactará para cotizar el flete del camión completo.`
+      : '¡Listo! 😊 Un asesor te contactará para cotizar el flete del camión completo.';
+  }
+
+  if (cantidadSesion > 10 && cantidadSesion < 500) {
+    // 11-499 bultos en provincia → límite de paquetería
+    sessionManager.updateSession(phone, {
+      flowState: 'active',
+      tempData: { ...session.tempData, cp, pendingCanalMedio: true },
+    });
+    return `Para ${cantidadSesion} bultos la paquetería tiene un límite de 10 bultos por pedido 📦\nEl siguiente nivel es flete de camión completo desde 12 toneladas.\n¿Te interesa que un asesor te cotice el flete?`;
+  }
+
+  // 1-10 bultos en provincia → paquetería normal
   sessionManager.updateSession(phone, { flowState: 'active' });
   return nombre
     ? `${pick(CHANNEL_VARIANTS)(nombre)} ${pick(CLOSING_VARIANTS)}`
