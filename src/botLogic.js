@@ -387,8 +387,9 @@ function esZonaLocal(texto = '', cp = '') {
 
 async function handleAskingEntregaMx(phone, message, session) {
   const msg = message.trim().toLowerCase();
-  const esSi = /^s[ií]|tengo|sí|si |claro|afirma|confirm|ok|okay/.test(msg);
-  const esNo = /^no\b|no tengo|no cuento|no hay/.test(msg);
+  const esSi = /^(s[ií]|sí|ok|okay|claro|tengo|sí tengo|si tengo|afirmo|correcto|así es)$/i.test(msg)
+    || /tengo\s+(una\s+)?(dirección|domicilio|bodega|negocio)\s+(en\s+)?méxico/i.test(msg);
+  const esNo = /^no\b|no tengo|no cuento|no hay|ecuador|extranjero|otro país|fuera de méxico/i.test(msg);
 
   if (esSi) {
     // Tiene dirección en México — continuar como cliente normal
@@ -1123,6 +1124,14 @@ async function handleWaitingForWig(phone, message, session) {
 }
 
 async function handleEscalated(phone, message, session) {
+  // Detección de frustración — responder con urgencia antes de cualquier otra lógica
+  const esFrustrado = /SIGO|TODAVÍA|AÚN NO|SIGUEN|YA PASARON|CUÁNDO|NO HAN|POR QUÉ|!!|😤|😡|🤬/.test(message)
+    || message === message.toUpperCase() && message.trim().length > 5;
+
+  if (esFrustrado) {
+    return 'Entiendo tu molestia y lamento la espera 😔 Voy a marcar tu caso como urgente para que te contacten lo antes posible. ¿Me puedes confirmar tu número de pedido o el producto que ordenaste?';
+  }
+
   // Despedida → cerrar amablemente
   if (DESPEDIDA_PATTERNS.test(message.trim())) {
     return '¡Hasta luego! 🌾 Cuando necesites algo más, aquí estamos.';
