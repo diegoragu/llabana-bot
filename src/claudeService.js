@@ -251,9 +251,23 @@ async function chat(history, customer) {
     ? `\n\n━━━ PRODUCTOS RELEVANTES ━━━\n${productos}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`
     : '';
 
-  const system = customerContext
-    ? `${systemDynamic}${productosContext}\n${customerContext}`
-    : `${systemDynamic}${productosContext}`;
+  const horaMX = new Date().toLocaleString('es-MX', {
+    timeZone: 'America/Mexico_City',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const [horaNum, minNum] = horaMX.split(':').map(Number);
+  const antesDeCorte = horaNum < 14 || (horaNum === 14 && minNum === 0);
+  const diaNum = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City', weekday: 'long' });
+  const esFinde = diaNum === 'sábado' && horaNum >= 14 || diaNum === 'domingo';
+  const urgenciaEnvio = esFinde
+    ? '⚠️ CONTEXTO ENVÍO: Es fin de semana fuera de horario — siguiente recolección el lunes.'
+    : antesDeCorte
+      ? '⚠️ CONTEXTO ENVÍO: Son antes de las 2pm — si el cliente ordena HOY, la paquetería recolecta HOY MISMO. Úsalo como argumento de cierre.'
+      : '⚠️ CONTEXTO ENVÍO: Ya pasaron las 2pm — si el cliente ordena HOY, el pedido sale MAÑANA en la mañana. Úsalo como argumento de cierre.';
+
+  const system = `${systemDynamic}${productosContext}\n\n${urgenciaEnvio}${customerContext ? '\n' + customerContext : ''}`;
 
   const recentHistory = history.slice(-10);
 

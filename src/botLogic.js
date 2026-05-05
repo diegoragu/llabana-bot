@@ -1021,6 +1021,41 @@ async function handleActive(phone, message, session) {
       : `Te mandamos por paquetería a todo México 📦 Haz tu pedido en llabanaenlinea.com ${pick(CLOSING_VARIANTS)}`;
   }
 
+  // Detectar intención de compra pendiente
+  if (response.includes('PENDIENTE_COMPRA')) {
+    const respuestaLimpia = response.replace('PENDIENTE_COMPRA', '').trim();
+
+    if (session.customer?.rowIndex) {
+      const ultimoProducto = session.conversationHistory
+        .filter(m => m.role === 'assistant')
+        .map(m => m.content)
+        .reverse()
+        .find(c => c.includes('llabanaenlinea.com')) || '';
+      const productoMatch = ultimoProducto.match(/\*([^*]+)\*/);
+      const producto = productoMatch ? productoMatch[1] : 'producto sin especificar';
+
+      sheetsService.updateOrderData(session.customer.rowIndex, {
+        notas: `Interesado en: ${producto} — pendiente de decidir`,
+      }).catch(() => {});
+
+      sheetsService.addSeguimiento(
+        session.customer.phone || phone,
+        session.customer.name || '',
+        `Interesado en ${producto} — dijo que lo piensa`,
+        'Pendiente de compra — hacer seguimiento'
+      ).catch(() => {});
+
+      if (!session.customer.segmento || session.customer.segmento === 'Lead frío') {
+        sheetsService.updateSegmento(phone, 'Lead frío').catch(() => {});
+      }
+    }
+
+    session.conversationHistory.push({ role: 'assistant', content: respuestaLimpia });
+    sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+    sheetsService.appendConversationLog(phone, message, respuestaLimpia).catch(() => {});
+    return respuestaLimpia;
+  }
+
   // Contar productos no encontrados — escalar tras 2 respuestas sin catálogo
   const sinProducto = /no tengo ese producto|no lo tengo en mi cat[aá]logo|no tengo ese en mi cat[aá]logo/i.test(response);
   if (sinProducto) {
