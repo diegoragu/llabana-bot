@@ -1158,12 +1158,8 @@ async function handleAskingCpBeforeEscalation(phone, message, session) {
   }
 
   if (cantidadSesion > 10 && cantidadSesion < 500) {
-    // 11-499 bultos en provincia → informar límite honestamente
-    sessionManager.updateSession(phone, {
-      flowState: 'active',
-      tempData: { ...session.tempData, cp },
-    });
-    return `Para esa cantidad no contamos con servicio de entrega directa fuera de la zona centro 📦\nNuestra tienda en línea maneja hasta 10 bultos por pedido.\n¿Te ayudo a encontrar el producto para hacer tu pedido?`;
+    sessionManager.updateSession(phone, { flowState: 'active' });
+    return `Para esa cantidad fuera de la zona centro no tenemos un esquema de entrega disponible por el momento 😔\n\nSi en algún momento tu volumen llega a camión completo (12 toneladas) o reduces a pedidos de hasta 10 bultos, con gusto te atendemos 🌾\n\n¿Puedo ayudarte con algo más?`;
   }
 
   // 1-10 bultos en provincia → paquetería normal
