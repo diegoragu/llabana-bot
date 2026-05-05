@@ -116,11 +116,10 @@ Cuando el cliente mencione "mayoreo", "al mayor", "precio especial", "grandes ca
 → Aplica la matriz de canal del PASO 4
 
 Para provincia con 11-499 bultos responde exactamente:
-"Para esa cantidad la paquetería tiene un límite de 10 bultos por pedido 📦
-El siguiente nivel es flete de camión completo desde 12 toneladas.
-¿Te interesa que un asesor te cotice el flete?"
-→ Si dice sí → ESCALAR_A_WIG
-→ Si dice no → "Puedes hacer pedidos parciales en llabanaenlinea.com — máximo 10 bultos por pedido 🛒"
+"Para esa cantidad no contamos con servicio de entrega directa fuera de la zona centro 📦
+Nuestra tienda en línea maneja hasta 10 bultos por pedido.
+¿Te ayudo a encontrar el producto para hacer tu pedido?"
+NO ofrecer cotizar camión — no aplica para ese rango.
 
 IMPORTANTE: Si el cliente menciona ciudad o estado sin dar cantidad,
 NO escales. Primero pregunta cuántos bultos necesita.

@@ -932,29 +932,6 @@ async function handleActive(phone, message, session) {
     }
   }
 
-  // Detectar respuesta a oferta de cotizar camión (pendingCanalMedio)
-  if (session.tempData?.pendingCanalMedio) {
-    const msg = messageBody.trim().toLowerCase();
-    const quiereCotizar = /^(s[ií]|sí|ok|claro|si|afirma|me interesa|cotiza|dale)$/i.test(msg);
-    const noquiereCotizar = /^no\b/i.test(msg);
-
-    if (quiereCotizar) {
-      await sessionManager.updateSession(phone, {
-        flowState: 'waiting_for_wig',
-        tempData: { ...session.tempData, pendingCanalMedio: false },
-      });
-      await notifyWig(phone, session, `Provincia — cantidad intermedia (11-499 bultos) — quiere cotizar camión`);
-      return 'Perfecto 🙌 Un asesor te contactará para cotizar el flete según tu volumen y destino.';
-    }
-
-    if (noquiereCotizar) {
-      await sessionManager.updateSession(phone, {
-        tempData: { ...session.tempData, pendingCanalMedio: false },
-      });
-      return 'Entendido 😊 Puedes hacer pedidos parciales en llabanaenlinea.com — máximo 10 bultos por pedido 🛒\n¿Te ayudo a encontrar el producto directo?';
-    }
-  }
-
   // Conversación con Claude
   // (el mensaje ya fue agregado al historial antes de los checks de escalación)
 
@@ -1181,12 +1158,12 @@ async function handleAskingCpBeforeEscalation(phone, message, session) {
   }
 
   if (cantidadSesion > 10 && cantidadSesion < 500) {
-    // 11-499 bultos en provincia → límite de paquetería
+    // 11-499 bultos en provincia → informar límite honestamente
     sessionManager.updateSession(phone, {
       flowState: 'active',
-      tempData: { ...session.tempData, cp, pendingCanalMedio: true },
+      tempData: { ...session.tempData, cp },
     });
-    return `Para ${cantidadSesion} bultos la paquetería tiene un límite de 10 bultos por pedido 📦\nEl siguiente nivel es flete de camión completo desde 12 toneladas.\n¿Te interesa que un asesor te cotice el flete?`;
+    return `Para esa cantidad no contamos con servicio de entrega directa fuera de la zona centro 📦\nNuestra tienda en línea maneja hasta 10 bultos por pedido.\n¿Te ayudo a encontrar el producto para hacer tu pedido?`;
   }
 
   // 1-10 bultos en provincia → paquetería normal
