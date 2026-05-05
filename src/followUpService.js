@@ -5,24 +5,32 @@ const transcriptService = require('./transcriptService');
 
 const redis = sessionManager.getRedisClient?.() || null;
 
-// Estados que ameritan seguimiento
-const ESTADOS_SEGUIMIENTO = new Set([
-  'active', 'confirming_escalation'
-]);
+// ── Constantes ────────────────────────────────────────────────────────────────
 
-function buildFollowUpMessage(nombre, session) {
+const DOS_HORAS         = 2  * 60 * 60 * 1000;
+const VEINTITRES_HORAS  = 23 * 60 * 60 * 1000;
+
+// Estados que activan Follow-up A (cliente activo)
+const ESTADOS_ACTIVO = new Set(['active', 'confirming_escalation']);
+
+// Estados que activan Follow-up C (cliente escalado)
+const ESTADOS_ESCALADO = new Set(['waiting_for_wig', 'escalated']);
+
+// ── Mensajes ──────────────────────────────────────────────────────────────────
+
+function buildFollowUpA(nombre, session) {
   const first = nombre ? nombre.split(' ')[0] : '';
   const history = session?.conversationHistory || [];
+
+  const ultimoMensajeBot = history
+    .filter(m => m.role === 'assistant')
+    .map(m => m.content)
+    .slice(-1)[0] || '';
 
   const ultimoMensajeCliente = history
     .filter(m => m.role === 'user')
     .map(m => m.content)
     .filter(c => c && c.length > 4)
-    .slice(-1)[0] || '';
-
-  const ultimoMensajeBot = history
-    .filter(m => m.role === 'assistant')
-    .map(m => m.content)
     .slice(-1)[0] || '';
 
   const productoMencionado = ultimoMensajeBot.match(/\*([^*]+)\*/)?.[1] || '';
@@ -39,94 +47,121 @@ function buildFollowUpMessage(nombre, session) {
   return `Oye${first ? ` ${first}` : ''} 👋 ¿en qué más te puedo ayudar? Aquí sigo por si tienes alguna duda 🌾`;
 }
 
-// Fallback en memoria si no hay Redis
-const seguimientosEnviados = new Set();
+function buildFollowUpC(nombre) {
+  const first = nombre ? nombre.split(' ')[0] : '';
+  return `Hola${first ? ` ${first}` : ''} 👋 Solo quería confirmarte que tu solicitud sigue registrada con nosotros 🙌\n\n¿Ya pudiste hablar con nuestro asesor? Queremos asegurarnos de que quedaste bien atendido 😊`;
+}
 
-async function yaEnviadoHoy(phone) {
-  if (!redis) return seguimientosEnviados.has(phone);
+// ── Redis helpers ─────────────────────────────────────────────────────────────
+
+const _memFallback = new Set();
+
+async function yaEnviado(key) {
+  if (!redis) return _memFallback.has(key);
   try {
-    const val = await redis.get(`followup:sent:${phone}`);
-    return !!val;
+    return !!(await redis.get(key));
   } catch {
-    return seguimientosEnviados.has(phone);
+    return _memFallback.has(key);
   }
 }
 
-async function marcarEnviado(phone) {
-  seguimientosEnviados.add(phone); // fallback memoria
+async function marcarEnviado(key, ttlSeconds) {
+  _memFallback.add(key);
   if (!redis) return;
   try {
-    await redis.set(`followup:sent:${phone}`, '1', 'EX', 86400);
+    await redis.set(key, '1', 'EX', ttlSeconds);
   } catch (err) {
     console.error('[FOLLOWUP] Redis mark error:', err.message);
   }
 }
 
+// ── Horario válido ────────────────────────────────────────────────────────────
+
+function dentroDeHorario() {
+  const ahora = new Date();
+  const hora = parseInt(ahora.toLocaleString('en-US', {
+    timeZone: 'America/Mexico_City',
+    hour: 'numeric',
+    hour12: false,
+  }));
+  const dia = ahora.toLocaleString('es-MX', {
+    timeZone: 'America/Mexico_City',
+    weekday: 'long',
+  });
+
+  if (dia === 'domingo') return false;
+  if (dia === 'sábado') return hora >= 9 && hora < 14;
+  return hora >= 9 && hora < 21;
+}
+
+// ── Enviar y registrar ────────────────────────────────────────────────────────
+
+async function enviarFollowUp(phone, mensaje, nombre, tipo, flowState) {
+  try {
+    await twilioService.sendMessage(phone, mensaje);
+    console.log(`📲 [FOLLOWUP-${tipo}] Enviado a ${phone} | nombre: ${nombre} | estado: ${flowState}`);
+
+    // Guardar en transcript
+    try {
+      const telLimpio = phone.replace('whatsapp:', '');
+      const existente = await transcriptService.getExistingTranscript(telLimpio);
+      const lineas = existente ? existente.split('\n').filter(Boolean) : [];
+      lineas.push(`Bot: [Follow-up ${tipo}] ${mensaje}`);
+      await transcriptService.updateTranscript(telLimpio, nombre, lineas.join('\n'));
+    } catch (err) {
+      console.error(`❌ [FOLLOWUP-${tipo}] Error guardando transcript:`, err.message);
+    }
+
+    // Registrar en Sheets pestaña 4
+    await sheetsService.addSeguimiento(
+      phone.replace('whatsapp:', ''),
+      nombre,
+      `Follow-up ${tipo}`,
+      `Estado: ${flowState}`
+    );
+  } catch (err) {
+    console.error(`❌ [FOLLOWUP-${tipo}] Error enviando a ${phone}:`, err.message);
+  }
+}
+
+// ── Loop principal ────────────────────────────────────────────────────────────
+
 async function runFollowUps() {
+  if (!dentroDeHorario()) return;
+
   try {
     const sessions = await sessionManager.getAllActiveSessions();
     const ahora = Date.now();
-    const DOS_HORAS = 2 * 60 * 60 * 1000;
 
     for (const [phone, session] of sessions) {
-      // Solo estados relevantes
-      if (!ESTADOS_SEGUIMIENTO.has(session.flowState)) continue;
-
-      // Ya se le envió seguimiento hoy
-      if (await yaEnviadoHoy(phone)) continue;
-
-      // Calcular inactividad
       const inactivo = ahora - (session.lastActivity || 0);
-      if (inactivo < DOS_HORAS) continue;
+      const nombre = session.customer?.name?.split(' ')[0]
+        || session.tempData?.name?.split(' ')[0]
+        || '';
 
-      // No molestar de noche (10pm - 9am hora México)
-      const horaMX = new Date().toLocaleString('en-US', {
-        timeZone: 'America/Mexico_City',
-        hour: 'numeric',
-        hour12: false
-      });
-      const hora = parseInt(horaMX);
-      if (hora >= 22 || hora < 9) continue;
-
-      // Enviar seguimiento
-      const nombre = session.customer?.name
-        ? session.customer.name.split(' ')[0]
-        : (session.tempData?.name?.split(' ')[0] || '');
-
-      const mensaje = buildFollowUpMessage(nombre, session);
-
-      try {
-        await twilioService.sendMessage(phone, mensaje);
-        await marcarEnviado(phone);
-
-        console.log(`📲 [FOLLOWUP] Seguimiento enviado a ${phone} | nombre: ${nombre} | inactivo: ${Math.round(inactivo/60000)} min`);
-
-        // Guardar en transcript para que aparezca en el dashboard
-        try {
-          const telLimpio = phone.replace('whatsapp:', '');
-          const existente = await transcriptService.getExistingTranscript(telLimpio);
-          const lineas = existente
-            ? existente.split('\n').filter(Boolean)
-            : [];
-          lineas.push(`Bot: [Follow-up] ${mensaje}`);
-          await transcriptService.updateTranscript(
-            telLimpio,
-            nombre,
-            lineas.join('\n')
-          );
-        } catch (err) {
-          console.error(`❌ [FOLLOWUP] Error guardando transcript:`, err.message);
+      // ── Follow-up A — cliente activo 2h sin respuesta ──────────────────────
+      if (ESTADOS_ACTIVO.has(session.flowState) && inactivo >= DOS_HORAS) {
+        const keyA = `followup:A:${phone}`;
+        if (!(await yaEnviado(keyA))) {
+          const mensaje = buildFollowUpA(nombre, session);
+          await enviarFollowUp(phone, mensaje, nombre, 'A', session.flowState);
+          await marcarEnviado(keyA, 86400); // no repetir en 24h
         }
+      }
 
-        // Registrar en Sheets pestaña 4 Seguimientos
-        await sheetsService.addSeguimiento(
-          phone.replace('whatsapp:', ''),
-          nombre,
-          'Seguimiento automático 2h',
-          `Estado: ${session.flowState}`
-        );
-      } catch (err) {
-        console.error(`❌ [FOLLOWUP] Error enviando a ${phone}:`, err.message);
+      // ── Follow-up C — cliente escalado 23h sin atención ───────────────────
+      if (ESTADOS_ESCALADO.has(session.flowState) && inactivo >= VEINTITRES_HORAS) {
+        const keyC = `followup:C:${phone}`;
+        if (!(await yaEnviado(keyC))) {
+          const mensaje = buildFollowUpC(nombre);
+          await enviarFollowUp(phone, mensaje, nombre, 'C', session.flowState);
+          await marcarEnviado(keyC, 86400 * 7); // no repetir en 7 días
+
+          // Marcar en sesión para detectar su respuesta en botLogic
+          await sessionManager.updateSession(phone, {
+            tempData: { ...session.tempData, followupCEnviado: true },
+          });
+        }
       }
     }
   } catch (err) {

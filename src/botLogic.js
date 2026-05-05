@@ -287,6 +287,25 @@ async function handleMessage(phone, messageBody) {
     case 'asking_name':      return handleAskingName(phone, messageBody, session);
     case 'active':           return handleActive(phone, messageBody, session);
     case 'waiting_for_wig': {
+      // Detectar respuesta al Follow-up C
+      if (session.tempData?.followupCEnviado) {
+        const noFueAtendido = /no\b|nadie|nunca|todavía|aún no|siguen sin|no me han/i.test(messageBody);
+        const sisFueAtendido = /^(sí|si|ya|me atendieron|perfecto|listo|ok|claro)$/i.test(messageBody.trim().toLowerCase());
+        if (noFueAtendido) {
+          await notifyWig(phone, session, '🚨 URGENTE — Cliente sin atención después de 23h');
+          await sessionManager.updateSession(phone, {
+            tempData: { ...session.tempData, followupCEnviado: false },
+          });
+          return 'Disculpa la espera 😔 Voy a marcar tu caso como urgente para que te contacten lo antes posible.';
+        }
+        if (sisFueAtendido) {
+          await sessionManager.updateSession(phone, {
+            tempData: { ...session.tempData, followupCEnviado: false },
+          });
+          return '¡Qué gusto! 😊 Quedamos a tus órdenes para lo que necesites 🌾';
+        }
+      }
+
       const wigAvisado = session.tempData?.wigAvisado || false;
 
       if (!wigAvisado) {
@@ -1204,6 +1223,25 @@ async function handleWaitingForWig(phone, message, session) {
 }
 
 async function handleEscalated(phone, message, session) {
+  // Detectar respuesta al Follow-up C
+  if (session.tempData?.followupCEnviado) {
+    const noFueAtendido = /no\b|nadie|nunca|todavía|aún no|siguen sin|no me han/i.test(message);
+    const sisFueAtendido = /^(sí|si|ya|me atendieron|perfecto|listo|ok|claro)$/i.test(message.trim().toLowerCase());
+    if (noFueAtendido) {
+      await notifyWig(phone, session, '🚨 URGENTE — Cliente sin atención después de 23h');
+      await sessionManager.updateSession(phone, {
+        tempData: { ...session.tempData, followupCEnviado: false },
+      });
+      return 'Disculpa la espera 😔 Voy a marcar tu caso como urgente para que te contacten lo antes posible.';
+    }
+    if (sisFueAtendido) {
+      await sessionManager.updateSession(phone, {
+        tempData: { ...session.tempData, followupCEnviado: false },
+      });
+      return '¡Qué gusto! 😊 Quedamos a tus órdenes para lo que necesites 🌾';
+    }
+  }
+
   // Detección de frustración — responder con urgencia antes de cualquier otra lógica
   const esFrustrado = /SIGO|TODAVÍA|AÚN NO|SIGUEN|YA PASARON|CUÁNDO|NO HAN|POR QUÉ|!!|😤|😡|🤬/.test(message)
     || message === message.toUpperCase() && message.trim().length > 5;
