@@ -1423,7 +1423,9 @@ async function handleConfirmingName(phone, message, session) {
 
     const intentPrevio = session.tempData?.intentPrevio;
     if (intentPrevio) {
-      return `¡Mucho gusto, ${first}! 😊 Sobre tu pregunta anterior — déjame ayudarte con eso.`;
+      const updatedSession = await sessionManager.getSession(phone);
+      const respuesta = await handleActive(phone, intentPrevio, updatedSession);
+      return `¡Mucho gusto, ${first}! 😊\n\n${respuesta}`;
     }
     return pick([
       `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`,
@@ -1446,7 +1448,9 @@ async function handleConfirmingName(phone, message, session) {
 
     const intentPrevio = session.tempData?.intentPrevio;
     if (intentPrevio) {
-      return `¡Mucho gusto, ${first}! 😊 Sobre tu pregunta anterior — déjame ayudarte con eso.`;
+      const updatedSession = await sessionManager.getSession(phone);
+      const respuesta = await handleActive(phone, intentPrevio, updatedSession);
+      return `¡Mucho gusto, ${first}! 😊\n\n${respuesta}`;
     }
     return pick([
       `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`,
