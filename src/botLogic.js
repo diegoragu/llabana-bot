@@ -389,7 +389,23 @@ async function handleAskingEntregaMx(phone, message, session) {
   const msg = message.trim().toLowerCase();
   const esSi = /^(s[ií]|sí|ok|okay|claro|tengo|sí tengo|si tengo|afirmo|correcto|así es)$/i.test(msg)
     || /tengo\s+(una\s+)?(dirección|domicilio|bodega|negocio)\s+(en\s+)?méxico/i.test(msg);
-  const esNo = /^no\b|no tengo|no cuento|no hay|ecuador|extranjero|otro país|fuera de méxico/i.test(msg);
+  const esNo = /^no\b|no tengo|no cuento|no hay|fuera de méxico/i.test(msg)
+    || /\b(ecuador|guatemala|colombia|venezuela|argentina|españa|estados unidos|usa|canada|chile|peru|cuba|honduras|panama|brasil|bolivia|uruguay|nicaragua|costa rica)\b/i.test(msg)
+    || /\b(extranjero|otro país|fuera del país|internacional|no llega|acá no|allá no|no aplica)\b/i.test(msg)
+    || /enviar?\s+a\s+(ecuador|colombia|guatemala|otro país)/i.test(msg)
+    || /\bno\b.{0,30}\b(llega|entregan?|envían?|mandan?)\b/i.test(msg);
+
+  // Detectar pregunta sobre envío internacional — explicar política antes de preguntar
+  const preguntaExportacion = /enviar?\s+a\s+\w+|llegar?\s+a\s+\w+|envío\s+internacional|mandan?\s+a\s+\w+/i.test(msg)
+    && !/méxico|mexico/i.test(msg);
+
+  if (preguntaExportacion && !esNo) {
+    const intentos = (session.tempData?.entregaMxIntentos || 0) + 1;
+    await sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, entregaMxIntentos: intentos },
+    });
+    return 'Nosotros entregamos a cualquier dirección dentro de México 📦 Desde ahí puedes llevarlo a donde necesites — el envío internacional corre por tu cuenta.\n\n¿Tienes alguna dirección en México donde podamos enviarte el pedido?';
+  }
 
   if (esSi) {
     // Tiene dirección en México — continuar como cliente normal
