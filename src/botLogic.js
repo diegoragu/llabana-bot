@@ -306,6 +306,15 @@ async function handleMessage(phone, messageBody) {
         }
       }
 
+      // Si ya es horario de atención y el cliente escribe de nuevo → notificar a Wig ahora
+      if (horarioService.estaEnHorario() && session.tempData?.escalacionPendiente) {
+        await sessionManager.updateSession(phone, {
+          tempData: { ...session.tempData, escalacionPendiente: false },
+        });
+        await notifyWig(phone, session, `Cliente retomó conversación — ya en horario de atención`);
+        return 'Ya avisé al asesor, en breve te contacta 🙌 ¿Hay algo en lo que pueda ayudarte mientras tanto?';
+      }
+
       const wigAvisado = session.tempData?.wigAvisado || false;
 
       if (!wigAvisado) {
@@ -1270,6 +1279,15 @@ async function handleEscalated(phone, message, session) {
       });
       return '¡Qué gusto! 😊 Quedamos a tus órdenes para lo que necesites 🌾';
     }
+  }
+
+  // Si ya es horario de atención y el cliente escribe de nuevo → notificar a Wig ahora
+  if (horarioService.estaEnHorario() && session.tempData?.escalacionPendiente) {
+    await sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, escalacionPendiente: false },
+    });
+    await notifyWig(phone, session, `Cliente retomó conversación — ya en horario de atención`);
+    return 'Ya avisé al asesor, en breve te contacta 🙌 ¿Hay algo en lo que pueda ayudarte mientras tanto?';
   }
 
   // Detección de frustración — responder con urgencia antes de cualquier otra lógica
