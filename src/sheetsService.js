@@ -167,6 +167,10 @@ function limpiarNombre(nombre) {
   n = n.replace(/^(el\s+se[ñn]or|la\s+se[ñn]ora|don|do[ñn]a|sr\.?|sra\.?)\s+/i, '').trim();
   if (!n) return '';
 
+  // Rechazar palabras sueltas ambiguas que no son nombres
+  const NO_ES_NOMBRE_SUELTO = /^(su|el|la|lo|si|sí|no|ok|ya|yo|tu|tú|mi|di|ve|da|uy|ay|ah|eh|uh|oh)$/i;
+  if (NO_ES_NOMBRE_SUELTO.test(n.trim())) return '';
+
   // Rechazar si la primera palabra es preposición/artículo standalone
   // Evita capturar "De Tepic Nayarit" como nombre "De"
   if (/^(de|del|la|el|los|las|un|una)$/i.test(n.split(' ')[0])) return '';

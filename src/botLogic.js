@@ -954,6 +954,14 @@ async function handleActive(phone, message, session) {
   // Conversación con Claude
   // (el mensaje ya fue agregado al historial antes de los checks de escalación)
 
+  const esQuejaPedido = /pedido\s*(desconocido|no\s*llega|no\s*ha\s*llegado|no\s*se\s*ha\s*movido|atrasado|perdido|no\s*aparece)|dice\s*(desconocido|error)|no\s*me\s*han\s*(respondido|contactado|dicho)/i.test(messageBody);
+
+  if (esQuejaPedido) {
+    await notifyWig(phone, session, `Problema con pedido existente: "${messageBody.substring(0, 100)}"`);
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    return 'Veo que hay un problema con tu pedido 😔 Ya avisé a un asesor para que te ayude — te contactarán en breve por este mismo WhatsApp 🙌';
+  }
+
   let response;
   try {
     response = await claudeService.chat(
@@ -965,16 +973,23 @@ async function handleActive(phone, message, session) {
     return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
   }
 
-  // Detectar si el cliente mencionó una cantidad de bultos o toneladas
-  const cantidadMatch = messageBody.match(/(\d+)\s*(bultos?|costales?|sacos?|toneladas?|tons?|kg|kilos?)/i);
-  if (cantidadMatch) {
-    let cantidad = parseInt(cantidadMatch[1]);
-    const unidad = cantidadMatch[2].toLowerCase();
-    if (/ton/.test(unidad)) cantidad = cantidad * 40;
-    if (/kg|kilo/.test(unidad)) cantidad = Math.ceil(cantidad / 25);
-    sessionManager.updateSession(phone, {
-      tempData: { ...session.tempData, cantidadBultos: cantidad },
-    });
+  // Detectar si el cliente mencionó una cantidad de bultos o toneladas (suma todas las menciones)
+  const cantidadMatches = [...messageBody.matchAll(/(\d+)\s*(bultos?|costales?|sacos?|toneladas?|tons?|kg|kilos?)/gi)];
+  if (cantidadMatches.length > 0) {
+    let totalBultos = 0;
+    for (const match of cantidadMatches) {
+      let cantidad = parseInt(match[1]);
+      const unidad = match[2].toLowerCase();
+      if (/ton/.test(unidad)) cantidad = cantidad * 40;
+      if (/kg|kilo/.test(unidad)) cantidad = Math.ceil(cantidad / 25);
+      totalBultos += cantidad;
+    }
+    if (totalBultos > 0) {
+      sessionManager.updateSession(phone, {
+        tempData: { ...session.tempData, cantidadBultos: totalBultos },
+      });
+      console.log(`📦 Cantidad detectada: ${totalBultos} bultos | ${phone}`);
+    }
   }
 
   // Eliminar saludos dobles — Claude a veces genera saludos o empieza con el nombre
