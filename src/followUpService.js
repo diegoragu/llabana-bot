@@ -133,6 +133,10 @@ async function runFollowUps() {
     const sessions = await sessionManager.getAllActiveSessions();
     const ahora = Date.now();
 
+    const totalSesiones = sessions.length || sessions.size || 0;
+    const escaladas = [...sessions].filter(([, s]) => ESTADOS_ESCALADO.has(s.flowState)).length;
+    console.log(`[FOLLOWUP] Revisando ${totalSesiones} sesiones | ${escaladas} escaladas`);
+
     for (const [phone, session] of sessions) {
       const inactivo = ahora - (session.lastActivity || 0);
       const nombre = session.customer?.name?.split(' ')[0]

@@ -648,7 +648,8 @@ async function handleAskingMexico(phone, message, session) {
   // Detectar si el mensaje contiene una consulta real además de confirmar México
   const msgNorm = message.trim().toLowerCase();
   const soloConfirmacion = /^(s[ií]|sí|si|ok|okay|claro|afirma|mexico|méxico|aquí|aca|acá|desde\s+\w+)$/i.test(msgNorm);
-  if (!soloConfirmacion && message.trim().length > 5) {
+  const esGenerico = /^(informes?|información|info|catálogo|catalogo|precios?|productos?|hola|buenas?|buen\s*d[ií]a)$/i.test(message.trim().toLowerCase());
+  if (!soloConfirmacion && message.trim().length > 5 && !esGenerico) {
     await sessionManager.updateSession(phone, {
       tempData: { ...session.tempData, intentPrevio: message.trim() },
     });
@@ -766,6 +767,14 @@ async function handleAskingName(phone, message, session) {
 const FLOW_PATTERNS = /(primera\s*ve[zs]|es\s*mi\s*primera|nunca\s*he|no\s*he|soy\s*nuev[oa]|no,?\s*primera)/i;
 
 async function handleActive(phone, message, session) {
+  const messageBody = message.trim();
+
+  // Confirmación genérica sin intent real — no pasar a Claude
+  const esConfirmacionVacia = /^(por favor|dale|adelante|ok|okay|sí|si|claro|listo|gracias|👍)$/i.test(messageBody);
+  if (esConfirmacionVacia && session.tempData?.intentPrevio) {
+    return `¿En qué te puedo ayudar? 😊 Cuéntame qué necesitas.`;
+  }
+
   // "hola" con cliente activo → confirmar si quiere nueva consulta
   if (/^hola$/i.test(message.trim()) && session.customer) {
     session.tempData = { ...session.tempData, _prevState: 'active' };
@@ -1206,7 +1215,7 @@ async function handleAskingCpBeforeEscalation(phone, message, session) {
 
   if (cantidadSesion > 10 && cantidadSesion < 500) {
     sessionManager.updateSession(phone, { flowState: 'active' });
-    return `Para esa cantidad fuera de la zona centro no tenemos un esquema de entrega disponible por el momento 😔\n\nSi en algún momento tu volumen llega a camión completo (12 toneladas) o reduces a pedidos de hasta 10 bultos, con gusto te atendemos 🌾\n\n¿Puedo ayudarte con algo más?`;
+    return `Para esa cantidad fuera de la zona centro no contamos con servicio de entrega disponible por el momento 😔\n\nSi en algún momento reduces a pedidos de hasta 10 bultos o tu volumen llega a camión completo (12 toneladas), aquí estamos con gusto 🌾\n\nMientras tanto, si necesitas algún producto en menor cantidad puedo ayudarte a encontrarlo en la tienda.`;
   }
 
   // 1-10 bultos en provincia → paquetería normal
@@ -1569,6 +1578,10 @@ async function handleConfirmingName(phone, message, session) {
 
     const intentPrevio = session.tempData?.intentPrevio;
     if (intentPrevio) {
+      // Limpiar intentPrevio ANTES de llamar a handleActive para evitar loops
+      await sessionManager.updateSession(phone, {
+        tempData: { ...session.tempData, intentPrevio: undefined, namePendiente: undefined },
+      });
       const updatedSession = await sessionManager.getSession(phone);
       const respuesta = await handleActive(phone, intentPrevio, updatedSession);
       return `¡Mucho gusto, ${first}! 😊\n\n${respuesta}`;
@@ -1594,6 +1607,10 @@ async function handleConfirmingName(phone, message, session) {
 
     const intentPrevio = session.tempData?.intentPrevio;
     if (intentPrevio) {
+      // Limpiar intentPrevio ANTES de llamar a handleActive para evitar loops
+      await sessionManager.updateSession(phone, {
+        tempData: { ...session.tempData, intentPrevio: undefined, namePendiente: undefined },
+      });
       const updatedSession = await sessionManager.getSession(phone);
       const respuesta = await handleActive(phone, intentPrevio, updatedSession);
       return `¡Mucho gusto, ${first}! 😊\n\n${respuesta}`;
