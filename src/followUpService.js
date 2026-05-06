@@ -137,9 +137,18 @@ async function runFollowUps() {
     const sessions = await sessionManager.getAllActiveSessions();
     const ahora = Date.now();
 
-    const totalSesiones = sessions.length || sessions.size || 0;
-    const escaladas = [...sessions].filter(([, s]) => ESTADOS_ESCALADO.has(s.flowState)).length;
-    console.log(`[FOLLOWUP] Revisando ${totalSesiones} sesiones | ${escaladas} escaladas`);
+    const sesionesArr = [...sessions];
+    const totalSesiones = sesionesArr.length;
+    const escaladas = sesionesArr.filter(([, s]) => ESTADOS_ESCALADO.has(s.flowState));
+    console.log(`[FOLLOWUP] Revisando ${totalSesiones} sesiones | ${escaladas.length} escaladas`);
+
+    // Log detallado de sesiones escaladas para diagnóstico
+    for (const [phone, s] of escaladas) {
+      const inactivo = Date.now() - (s.lastActivity || 0);
+      const keyC = `followup:C:${phone}`;
+      const yaEnv = await yaEnviado(keyC);
+      console.log(`[FOLLOWUP-C-DEBUG] ${phone} | inactivo: ${Math.round(inactivo/3600000)}h | yaEnviado: ${yaEnv} | flowState: ${s.flowState}`);
+    }
 
     for (const [phone, session] of sessions) {
       const inactivo = ahora - (session.lastActivity || 0);
