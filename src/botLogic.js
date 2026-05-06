@@ -954,14 +954,6 @@ async function handleActive(phone, message, session) {
   // Conversación con Claude
   // (el mensaje ya fue agregado al historial antes de los checks de escalación)
 
-  const esQuejaPedido = /pedido\s*(desconocido|no\s*llega|no\s*ha\s*llegado|no\s*se\s*ha\s*movido|atrasado|perdido|no\s*aparece)|dice\s*(desconocido|error)|no\s*me\s*han\s*(respondido|contactado|dicho)/i.test(messageBody);
-
-  if (esQuejaPedido) {
-    await notifyWig(phone, session, `Problema con pedido existente: "${messageBody.substring(0, 100)}"`);
-    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
-    return 'Veo que hay un problema con tu pedido 😔 Ya avisé a un asesor para que te ayude — te contactarán en breve por este mismo WhatsApp 🙌';
-  }
-
   let response;
   try {
     response = await claudeService.chat(
@@ -1038,6 +1030,27 @@ async function handleActive(phone, message, session) {
         `flow=${session.flowState}`
       );
     }
+  }
+
+  if (response.includes('QUEJA_PEDIDO')) {
+    const respuestaLimpia = response.replace('QUEJA_PEDIDO', '').trim();
+
+    // Notificar a Wig con urgencia
+    await notifyWig(phone, session, `🚨 URGENTE — Problema con pedido: "${messageBody.substring(0, 100)}"`);
+
+    // NO cambiar flowState — el bot sigue atendiendo mientras Wig revisa
+    // Solo registrar en Sheets que hay una queja activa
+    if (session.customer?.rowIndex) {
+      sheetsService.appendTag(session.customer.rowIndex, 'Queja').catch(() => {});
+      sheetsService.updateOrderData(session.customer.rowIndex, {
+        notas: `Queja pedido: ${messageBody.substring(0, 100)}`,
+      }).catch(() => {});
+    }
+
+    session.conversationHistory.push({ role: 'assistant', content: respuestaLimpia });
+    sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+    sheetsService.appendConversationLog(phone, messageBody, respuestaLimpia).catch(() => {});
+    return respuestaLimpia;
   }
 
   if (response.includes('ESCALAR_A_WIG')) {
