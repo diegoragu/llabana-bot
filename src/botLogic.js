@@ -767,14 +767,6 @@ async function handleAskingName(phone, message, session) {
 const FLOW_PATTERNS = /(primera\s*ve[zs]|es\s*mi\s*primera|nunca\s*he|no\s*he|soy\s*nuev[oa]|no,?\s*primera)/i;
 
 async function handleActive(phone, message, session) {
-  const messageBody = message.trim();
-
-  // Confirmación genérica sin intent real — no pasar a Claude
-  const esConfirmacionVacia = /^(por favor|dale|adelante|ok|okay|sí|si|claro|listo|gracias|👍)$/i.test(messageBody);
-  if (esConfirmacionVacia && session.tempData?.intentPrevio) {
-    return `¿En qué te puedo ayudar? 😊 Cuéntame qué necesitas.`;
-  }
-
   // "hola" con cliente activo → confirmar si quiere nueva consulta
   if (/^hola$/i.test(message.trim()) && session.customer) {
     session.tempData = { ...session.tempData, _prevState: 'active' };
@@ -960,22 +952,9 @@ async function handleActive(phone, message, session) {
     }
   }
 
-  // Conversación con Claude
-  // (el mensaje ya fue agregado al historial antes de los checks de escalación)
-
-  let response;
-  try {
-    response = await claudeService.chat(
-      session.conversationHistory,
-      session.customer
-    );
-  } catch (err) {
-    console.error('claudeService.chat error:', err.message);
-    return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
-  }
-
   // Detectar si el cliente mencionó una cantidad de bultos o toneladas (suma todas las menciones)
-  const cantidadMatches = [...messageBody.matchAll(/(\d+)\s*(bultos?|costales?|sacos?|toneladas?|tons?|kg|kilos?)/gi)];
+  // Se hace ANTES de llamar a Claude para que ya tenga la cantidad en tempData al decidir
+  const cantidadMatches = [...message.matchAll(/(\d+)\s*(bultos?|costales?|sacos?|toneladas?|tons?|kg|kilos?)/gi)];
   if (cantidadMatches.length > 0) {
     let totalBultos = 0;
     for (const match of cantidadMatches) {
@@ -991,6 +970,20 @@ async function handleActive(phone, message, session) {
       });
       console.log(`📦 Cantidad detectada: ${totalBultos} bultos | ${phone}`);
     }
+  }
+
+  // Conversación con Claude
+  // (el mensaje ya fue agregado al historial antes de los checks de escalación)
+
+  let response;
+  try {
+    response = await claudeService.chat(
+      session.conversationHistory,
+      session.customer
+    );
+  } catch (err) {
+    console.error('claudeService.chat error:', err.message);
+    return 'Tuve un problema técnico. ¿Me repites lo que necesitas?';
   }
 
   // Eliminar saludos dobles — Claude a veces genera saludos o empieza con el nombre
@@ -1045,20 +1038,20 @@ async function handleActive(phone, message, session) {
     const respuestaLimpia = response.replace('QUEJA_PEDIDO', '').trim();
 
     // Notificar a Wig con urgencia
-    await notifyWig(phone, session, `🚨 URGENTE — Problema con pedido: "${messageBody.substring(0, 100)}"`);
+    await notifyWig(phone, session, `🚨 URGENTE — Problema con pedido: "${message.substring(0, 100)}"`);
 
     // NO cambiar flowState — el bot sigue atendiendo mientras Wig revisa
     // Solo registrar en Sheets que hay una queja activa
     if (session.customer?.rowIndex) {
       sheetsService.appendTag(session.customer.rowIndex, 'Queja').catch(() => {});
       sheetsService.updateOrderData(session.customer.rowIndex, {
-        notas: `Queja pedido: ${messageBody.substring(0, 100)}`,
+        notas: `Queja pedido: ${message.substring(0, 100)}`,
       }).catch(() => {});
     }
 
     session.conversationHistory.push({ role: 'assistant', content: respuestaLimpia });
     sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
-    sheetsService.appendConversationLog(phone, messageBody, respuestaLimpia).catch(() => {});
+    sheetsService.appendConversationLog(phone, message, respuestaLimpia).catch(() => {});
     return respuestaLimpia;
   }
 

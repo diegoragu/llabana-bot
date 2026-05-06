@@ -182,7 +182,10 @@ async function isWigCommand(from, body) {
   if (!wigNumber) return false;
   const fromNorm = from.replace(/\D/g, '').slice(-10);
   const wigNorm  = wigNumber.replace(/\D/g, '').slice(-10);
-  return fromNorm === wigNorm && /^\/\w/.test((body || '').trim());
+  const bodyTrim = (body || '').trim();
+  const esComando = /^\/\w/.test(bodyTrim) ||
+    /^(pendientes?|escalaciones?\s+pendientes?)$/i.test(bodyTrim);
+  return fromNorm === wigNorm && esComando;
 }
 
 module.exports = { handleWigCommand, isWigCommand };

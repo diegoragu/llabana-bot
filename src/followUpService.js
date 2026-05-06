@@ -3,7 +3,9 @@ const sheetsService     = require('./sheetsService');
 const twilioService     = require('./twilioService');
 const transcriptService = require('./transcriptService');
 
-const redis = sessionManager.getRedisClient?.() || null;
+function getRedis() {
+  return sessionManager.getRedisClient?.() || null;
+}
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -57,6 +59,7 @@ function buildFollowUpC(nombre) {
 const _memFallback = new Set();
 
 async function yaEnviado(key) {
+  const redis = getRedis();
   if (!redis) return _memFallback.has(key);
   try {
     return !!(await redis.get(key));
@@ -67,6 +70,7 @@ async function yaEnviado(key) {
 
 async function marcarEnviado(key, ttlSeconds) {
   _memFallback.add(key);
+  const redis = getRedis();
   if (!redis) return;
   try {
     await redis.set(key, '1', 'EX', ttlSeconds);
