@@ -157,7 +157,9 @@ async function runFollowUps() {
         || '';
 
       // ── Follow-up A — cliente activo 2h sin respuesta ──────────────────────
-      if (ESTADOS_ACTIVO.has(session.flowState) && inactivo >= DOS_HORAS) {
+      if (ESTADOS_ACTIVO.has(session.flowState) &&
+          !ESTADOS_ESCALADO.has(session.flowState) &&
+          inactivo >= DOS_HORAS) {
         const keyA = `followup:A:${phone}`;
         if (!(await yaEnviado(keyA))) {
           const mensaje = buildFollowUpA(nombre, session);

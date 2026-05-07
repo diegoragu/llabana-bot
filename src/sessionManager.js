@@ -26,8 +26,8 @@ if (process.env.REDIS_URL) {
   console.warn('⚠️  REDIS_URL no configurado — usando sesiones en memoria');
 }
 
-const SESSION_TIMEOUT_MS  = 4 * 60 * 60 * 1000; // 4 horas
-const SESSION_TTL_SECONDS = 4 * 60 * 60;         // 4 horas
+const SESSION_TIMEOUT_MS  = 30 * 60 * 60 * 1000; // 30 horas
+const SESSION_TTL_SECONDS = 30 * 60 * 60;         // 30 horas
 
 // Fallback en memoria si no hay Redis
 const memorySessions = new Map();

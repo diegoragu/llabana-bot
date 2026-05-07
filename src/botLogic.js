@@ -418,9 +418,10 @@ async function handleAskingEntregaMx(phone, message, session) {
   const esSi = /^(s[ií]|sí|ok|okay|claro|tengo|sí tengo|si tengo|afirmo|correcto|así es)$/i.test(msg)
     || /tengo\s+(una\s+)?(dirección|domicilio|bodega|negocio)\s+(en\s+)?méxico/i.test(msg);
   const esNo = /^no\b|no tengo|no cuento|no hay|fuera de méxico/i.test(msg)
-    || /\b(ecuador|guatemala|colombia|venezuela|argentina|españa|estados unidos|usa|canada|chile|peru|cuba|honduras|panama|brasil|bolivia|uruguay|nicaragua|costa rica)\b/i.test(msg)
-    || /\b(extranjero|otro país|fuera del país|internacional|no llega|acá no|allá no|no aplica)\b/i.test(msg)
-    || /enviar?\s+a\s+(ecuador|colombia|guatemala|otro país)/i.test(msg)
+    || /\b(ecuador|peru|perú|guatemala|colombia|venezuela|argentina|españa|estados\s*unidos|usa|canada|chile|cuba|honduras|panama|brasil|bolivia|uruguay|nicaragua|costa\s*rica)\b/i.test(msg)
+    || /\b(extranjero|otro\s*pa[ií]s|fuera\s*del\s*pa[ií]s|internacional|no\s*llega|ac[aá]\s*no|all[aá]\s*no)\b/i.test(msg)
+    || /\bsoy\s+d[e]?\s+(peru|perú|ecuador|colombia|argentina|chile|venezuela|guatemala|honduras|panama|brasil|bolivia|uruguay|cuba)\b/i.test(msg)
+    || (/\benviar?\s+a\s+\w+|llegar?\s+a\s+\w+/i.test(msg) && !/m[eé]xico/i.test(msg))
     || /\bno\b.{0,30}\b(llega|entregan?|envían?|mandan?)\b/i.test(msg);
 
   // Detectar pregunta sobre envío internacional — explicar política antes de preguntar
