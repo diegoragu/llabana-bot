@@ -801,16 +801,30 @@ async function handleActive(phone, message, session) {
     return '¿Quieres empezar una nueva consulta o seguimos con lo que teníamos? 😊';
   }
 
-  // Si ya hay escalación pendiente fuera de horario, no procesar con Claude
+  // Si ya hay escalación pendiente, manejar según horario
   if (session.tempData?.escalacionPendiente) {
     const DESPEDIDAS_PENDIENTE = /^(gracias|ok|okey|okay|bien|perfecto|entendido|👍|🙌|hasta luego|bye|adios|adiós|de acuerdo|listo|sale|muchas gracias)$/i;
+
     if (DESPEDIDAS_PENDIENTE.test(message.trim())) {
       return '¡Hasta luego! Te contactaremos a primera hora 🙌';
     }
+
+    // Si ya es horario de atención → notificar a Wig ahora
+    if (horarioService.estaEnHorario()) {
+      await sessionManager.updateSession(phone, {
+        flowState: 'waiting_for_wig',
+        tempData: { ...session.tempData, escalacionPendiente: false, wigAvisado: false },
+      });
+      await notifyWig(phone, session, `Cliente retomó conversación en horario — escalación pendiente`);
+      return 'Ya avisé al asesor, en breve te contacta 🙌 ¿Hay algo en lo que pueda ayudarte mientras tanto?';
+    }
+
+    // Fuera de horario → guardar mensaje y dar calma
     sheetsService.appendConversationLog(
       phone, message,
-      '[info adicional — escalación pendiente]'
+      '[info adicional — escalación pendiente fuera de horario]'
     ).catch(() => {});
+
     const wigAvisado = session.tempData?.wigAvisado || false;
     if (!wigAvisado) {
       await sessionManager.updateSession(phone, {
