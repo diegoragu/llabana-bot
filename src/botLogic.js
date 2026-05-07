@@ -522,6 +522,9 @@ async function handleAskingMexico(phone, message, session) {
     return '¿Con quién tengo el gusto? 😊';
   }
 
+  // Detectar sucursal/distribuidor B2B
+  const esSucursal = /\b(sucursal|distribuidor|tienda|negocio|local|establecimiento|punto\s+de\s+venta)\b/i.test(message);
+
   // Detectar CDMX/Edomex mencionado en texto antes de registrar
   if (mencionaZonaLocal(message)) {
     const stateDetectado = /estado\s+de\s+m[eé]xico|edomex|edo\.?\s*mex|ecatepec|toluca|neza|naucalpan|tlalnepantla|chimalhuacan|texcoco|chalco/i.test(message)
@@ -544,16 +547,26 @@ async function handleAskingMexico(phone, message, session) {
       console.error('Error registrando cliente zona local por texto:', err.message);
     }
 
+    if (esSucursal && localRowIndex) {
+      sheetsService.updateOrderData(localRowIndex, {
+        notas: `B2B — Sucursal/Distribuidor: ${message.substring(0, 100)}`,
+      }).catch(() => {});
+      sheetsService.appendTag(localRowIndex, 'Sucursal').catch(() => {});
+    }
+
     const customerLocal = {
       phone, state: stateDetectado, rowIndex: localRowIndex,
       channel: 'paqueteria', channelDetail: 'Nacional', segmento: 'Lead frío',
     };
     await sessionManager.updateSession(phone, { customer: customerLocal });
     const sessionLocal = await sessionManager.getSession(phone);
+    const motivoLocal = esSucursal
+      ? `Zona local (${stateDetectado}) — ES SUCURSAL/DISTRIBUIDOR: "${message.substring(0, 80)}"`
+      : `Zona local detectada por texto: "${message.substring(0, 80)}"`;
     const { fueraHorario: fueraH2 } = await notifyWig(
       phone,
       sessionLocal || { ...session, customer: customerLocal },
-      `Zona local detectada por texto: "${message.substring(0, 80)}"`,
+      motivoLocal,
       stateDetectado
     );
 
@@ -660,8 +673,9 @@ async function handleAskingMexico(phone, message, session) {
   const soloConfirmacion = /^(s[ií]|sí|si|ok|okay|claro|afirma|mexico|méxico|aquí|aca|acá|desde\s+\w+)$/i.test(msgNorm);
   const esGenerico = /^(informes?|información|info|catálogo|catalogo|precios?|productos?|hola|buenas?|buen\s*d[ií]a)$/i.test(message.trim().toLowerCase());
   if (!soloConfirmacion && message.trim().length > 5 && !esGenerico) {
+    const previo = session.tempData?.intentPrevio || '';
     await sessionManager.updateSession(phone, {
-      tempData: { ...session.tempData, intentPrevio: message.trim() },
+      tempData: { ...session.tempData, intentPrevio: previo ? `${previo}. ${message.trim()}` : message.trim() },
     });
   }
 
@@ -1522,6 +1536,9 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
       nombre,
       resumen: resumenLimpio || motivo,
       timestamp: Date.now(),
+    });
+    await sessionManager.updateSession(phone, {
+      tempData: { ...session.tempData, escalacionPendiente: true },
     });
     console.log(`📥 [COLA] Fuera de horario — escalación de ${nombre} guardada para después`);
     return { fueraHorario: true };
