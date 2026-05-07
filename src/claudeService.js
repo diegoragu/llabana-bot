@@ -325,9 +325,28 @@ async function chat(history, customer) {
       ? '⚠️ CONTEXTO ENVÍO: Son antes de las 2pm — si el cliente ordena HOY, la paquetería recolecta HOY MISMO. Úsalo como argumento de cierre.'
       : '⚠️ CONTEXTO ENVÍO: Ya pasaron las 2pm — si el cliente ordena HOY, el pedido sale MAÑANA en la mañana. Úsalo como argumento de cierre.';
 
-  const system = `${systemDynamic}${productosContext}\n\n${urgenciaEnvio}${customerContext ? '\n' + customerContext : ''}`;
+  // Resumen de contexto clave de la conversación para que Claude no pierda info
+  let conversationContext = '';
+  if (history && history.length > 0) {
+    const allText = history.map(m => m.content).join(' ');
+    const especieMatch = allText.match(/\b(\d+)\s*(gallos?|pollos?|cerdos?|borregos?|vacas?|caballos?|perros?|gatos?|conejos?|peces?|tilapias?|codornices?|aves?)\b/i);
+    const etapaMatch = allText.match(/\b(inicio|crecimiento|engorda|mantenimiento|gestaci[oó]n|lactancia|postura|reproducci[oó]n|pelecha|desarrollo)\b/i);
 
-  const recentHistory = history.slice(-10);
+    const contextLines = [];
+    if (especieMatch) contextLines.push(`Animal mencionado: ${especieMatch[0]}`);
+    if (etapaMatch) contextLines.push(`Etapa mencionada: ${etapaMatch[0]}`);
+    if (customer?.cp) contextLines.push(`CP: ${customer.cp}`);
+
+    if (contextLines.length > 0) {
+      conversationContext = `\n\n━━━ CONTEXTO CONVERSACIÓN ━━━\n${contextLines.join('\n')}\nUsa este contexto — NO vuelvas a preguntar por datos ya mencionados.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+    }
+  }
+
+  const system = customerContext
+    ? `${systemDynamic}${productosContext}${conversationContext}\n\n${urgenciaEnvio}\n${customerContext}`
+    : `${systemDynamic}${productosContext}${conversationContext}\n\n${urgenciaEnvio}`;
+
+  const recentHistory = history.slice(-20);
 
   const response = await client.messages.create({
     model:      'claude-sonnet-4-6',
