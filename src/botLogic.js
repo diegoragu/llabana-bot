@@ -873,6 +873,19 @@ async function handleActive(phone, message, session) {
       });
       return 'Ya avisé al asesor, te contactará cuando inicien operaciones 🙌\n\nMientras tanto puedo ayudarte con lo que necesites — asesoría de productos, recomendaciones de alimento, dudas de envío. ¿En qué te ayudo?';
     }
+    // Intentar responder con Claude para preguntas útiles (pago, productos, envío)
+    try {
+      const respClaude = await claudeService.chat(
+        session.conversationHistory || [],
+        session.customer
+      );
+      if (respClaude && !respClaude.includes('ESCALAR_A_WIG')) {
+        session.conversationHistory.push({ role: 'user', content: message });
+        session.conversationHistory.push({ role: 'assistant', content: respClaude });
+        await sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+        return respClaude;
+      }
+    } catch { /* ignorar */ }
     return '¡Con gusto! 🙌 El asesor te contactará cuando inicien operaciones por aquí mismo.';
   }
 
@@ -1297,11 +1310,24 @@ async function handleAskingCpBeforeEscalation(phone, message, session) {
   const nombre = primerNombre(session.customer?.name || '');
 
   if (esLocal) {
-    await notifyWig(phone, session, `CP ${cp} — zona local (primer compra cliente existente)`);
+    const zonaLabel = cpIsCDMX(cp) ? 'CDMX' : 'Edomex';
+    const { fueraHorario } = await notifyWig(phone, session,
+      `CP ${cp} — zona local (${zonaLabel}) — primer compra cliente existente`);
+
+    if (fueraHorario) {
+      sessionManager.updateSession(phone, {
+        flowState: 'active',
+        tempData: { ...session.tempData, escalacionPendiente: true },
+      });
+      return nombre
+        ? `¡Perfecto, ${nombre}! Tu zona tiene opciones de entrega directa 🚚\nNuestros asesores te contactarán mañana a primera hora para coordinar la entrega. ¿Puedo ayudarte con algo más mientras tanto?`
+        : `¡Perfecto! Tu zona tiene opciones de entrega directa 🚚\nNuestros asesores te contactarán mañana a primera hora para coordinar la entrega. ¿Puedo ayudarte con algo más mientras tanto?`;
+    }
+
     sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
     return nombre
-      ? `¡Listo, ${nombre}! 😊 Un asesor te contactará en breve por este mismo WhatsApp.`
-      : '¡Listo! 😊 Un asesor te contactará en breve por este mismo WhatsApp.';
+      ? `¡Listo, ${nombre}! 😊 Un asesor te contactará en breve para coordinar la entrega directa 🚚`
+      : '¡Listo! 😊 Un asesor te contactará en breve para coordinar la entrega directa 🚚';
   }
 
   // CP foráneo — verificar cantidad antes de cerrar
