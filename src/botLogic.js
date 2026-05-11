@@ -1051,6 +1051,15 @@ async function handleActive(phone, message, session) {
     }
   }
 
+  // Detectar número de guía de rastreo antes de procesar como cantidad
+  const esGuiaRastreo = /^\d{15,30}$/.test(message.trim()) ||
+    /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(message.trim()) ||
+    /^\d{4}\s?\d{4}\s?\d{4}\s?\d{4}/.test(message.trim());
+
+  if (esGuiaRastreo) {
+    return `Ese parece un número de guía de rastreo 📦\n\nPuedes rastrearlo en el sitio de la paquetería (Fedex, DHL, Estafeta, etc.) con ese número.\n\nSi tienes algún problema con tu pedido o el rastreo no muestra movimiento, cuéntame y te ayudo 🙌`;
+  }
+
   // Detectar número suelto como posible cantidad de animales
   const soloNumero = /^\d+$/.test(message.trim());
   if (soloNumero && session.conversationHistory.length > 2) {
@@ -1135,8 +1144,7 @@ async function handleActive(phone, message, session) {
     // Notificar a Wig con urgencia
     await notifyWig(phone, session, `🚨 URGENTE — Problema con pedido: "${message.substring(0, 100)}"`);
 
-    // NO cambiar flowState — el bot sigue atendiendo mientras Wig revisa
-    // Solo registrar en Sheets que hay una queja activa
+    // Cambiar a waiting_for_wig para que los siguientes mensajes (OK, Gracias) no renotifiquen
     if (session.customer?.rowIndex) {
       sheetsService.appendTag(session.customer.rowIndex, 'Queja').catch(() => {});
       sheetsService.updateOrderData(session.customer.rowIndex, {
@@ -1145,7 +1153,10 @@ async function handleActive(phone, message, session) {
     }
 
     session.conversationHistory.push({ role: 'assistant', content: respuestaLimpia });
-    sessionManager.updateSession(phone, { conversationHistory: session.conversationHistory });
+    await sessionManager.updateSession(phone, {
+      flowState: 'waiting_for_wig',
+      conversationHistory: session.conversationHistory,
+    });
     sheetsService.appendConversationLog(phone, message, respuestaLimpia).catch(() => {});
     return respuestaLimpia;
   }
