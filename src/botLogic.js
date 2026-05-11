@@ -789,7 +789,35 @@ async function handleAskingName(phone, message, session) {
         console.error(`❌ [NOMBRE] Error en fallback registro:`, err.message);
       });
     }
-    // Guardar nombre temporalmente y pedir confirmación
+    // Nombre simple (una palabra, solo letras, ≤12 chars) → aceptar directamente
+    const palabras = nombre.split(' ').filter(Boolean);
+    const esNombreSimple = palabras.length === 1 &&
+      nombre.length <= 12 &&
+      /^[a-záéíóúüñA-ZÁÉÍÓÚÜÑ]+$/.test(nombre);
+
+    if (esNombreSimple) {
+      await sessionManager.updateSession(phone, {
+        flowState: 'active',
+        tempData:  { ...session.tempData, name: nombre, nameAttempts: 0 },
+        customer:  { ...session.customer, name: nombre },
+      });
+      const intentPrevio = session.tempData?.intentPrevio;
+      if (intentPrevio) {
+        await sessionManager.updateSession(phone, {
+          tempData: { ...session.tempData, name: nombre, intentPrevio: undefined },
+        });
+        const updatedSession = await sessionManager.getSession(phone);
+        const respuesta = await handleActive(phone, intentPrevio, updatedSession);
+        return `¡Mucho gusto, ${first}! 😊\n\n${respuesta}`;
+      }
+      return pick([
+        `¡Mucho gusto, ${first}! 😊 ¿En qué te puedo ayudar?`,
+        `¡Qué bueno que nos escribes, ${first}! ¿En qué te ayudo?`,
+        `Gracias ${first} 🌾 ¿Qué necesitas hoy?`,
+      ]);
+    }
+
+    // Nombre con apellido o inusual → confirmar como antes
     sessionManager.updateSession(phone, {
       flowState: 'confirming_name',
       tempData:  { ...session.tempData, namePendiente: nombre, nameAttempts: 0 },
