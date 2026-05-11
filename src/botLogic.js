@@ -183,6 +183,15 @@ async function handleMessage(phone, messageBody) {
     await sessionManager.deleteSession(phone);
   }
 
+  // Bloquear reinicio de extranjeros ya cerrados
+  const redis = sessionManager.getRedisClient?.();
+  if (redis) {
+    const yaFueCerrado = await redis.get(`extranjero:${phone}`).catch(() => null);
+    if (yaFueCerrado) {
+      return 'Por el momento solo entregamos dentro de México 🙏';
+    }
+  }
+
   let session = await sessionManager.getSession(phone);
 
   // Detectar origen en sesión activa
@@ -329,6 +338,13 @@ async function handleMessage(phone, messageBody) {
       // para evitar que Claude vuelva a detectar escalación y genere loop
       const msg = messageBody.trim().toLowerCase();
 
+      // Detectar frustración acumulada — escalar con urgencia
+      const esFrustradoEsperando = /muchas\s+veces|varias\s+veces|ya\s+llevo|cuándo|cuando\s+me|nadie\s+me|siguen\s+sin|no\s+me\s+han|no\s+han|días\s+(esperando|sin)|horas\s+esperando/i.test(messageBody);
+      if (esFrustradoEsperando) {
+        await notifyWig(phone, session, `🚨 Cliente muy frustrado por espera: "${messageBody.substring(0, 100)}"`);
+        return `Lamento mucho la espera, eso no está bien 😔 Acabo de marcar tu caso como urgente para que te atiendan lo antes posible. Entiendo tu frustración y mereces una respuesta rápida 🙏`;
+      }
+
       // Mensajes de cierre — responder y quedarse en waiting_for_wig
       const esCierre = /^(gracias|ok|okay|de acuerdo|perfecto|listo|entendido|si|sí|👍|okey)$/i.test(msg);
       if (esCierre) {
@@ -443,8 +459,12 @@ async function handleAskingEntregaMx(phone, message, session) {
   }
 
   if (esNo) {
-    // No tiene dirección en México — cerrar amablemente
+    // No tiene dirección en México — cerrar amablemente y marcar para no reiniciar
     await sessionManager.deleteSession(phone);
+    const redis = sessionManager.getRedisClient?.();
+    if (redis) {
+      await redis.set(`extranjero:${phone}`, '1', 'EX', 86400).catch(() => {});
+    }
     return 'Entendido 🙏 Por el momento nuestros envíos son solo dentro de México. Si en algún momento consigues una dirección mexicana, con gusto te ayudamos 🌾';
   }
 
@@ -796,6 +816,20 @@ async function handleAskingName(phone, message, session) {
 const FLOW_PATTERNS = /(primera\s*ve[zs]|es\s*mi\s*primera|nunca\s*he|no\s*he|soy\s*nuev[oa]|no,?\s*primera)/i;
 
 async function handleActive(phone, message, session) {
+  // Saludo simple con cliente activo e historial largo → limpiar historial contaminado
+  const esSaludoNuevo = /^(hola|buen[oa]s?|buenos\s+d[ií]as?|buenas\s+(tardes?|noches?)|hey|saludos?|qué\s+tal|buen\s+d[ií]a)$/i.test(message.trim());
+
+  if (esSaludoNuevo && session.customer && session.conversationHistory.length > 4) {
+    await sessionManager.updateSession(phone, {
+      conversationHistory: [],
+      tempData: { ...session.tempData, cantidadBultos: undefined },
+    });
+    const nombre = primerNombre(session.customer.name || '');
+    return nombre
+      ? `¡Hola ${nombre}! 👋 ¿En qué te puedo ayudar hoy?`
+      : '¡Hola! 👋 ¿En qué te puedo ayudar hoy?';
+  }
+
   // "hola" con cliente activo → confirmar si quiere nueva consulta
   if (/^hola$/i.test(message.trim()) && session.customer) {
     session.tempData = { ...session.tempData, _prevState: 'active' };
