@@ -183,13 +183,15 @@ async function handleMessage(phone, messageBody) {
     await sessionManager.deleteSession(phone);
   }
 
-  // Bloquear reinicio de extranjeros ya cerrados
-  const redis = sessionManager.getRedisClient?.();
-  if (redis) {
-    const yaFueCerrado = await redis.get(`extranjero:${phone}`).catch(() => null);
-    if (yaFueCerrado) {
-      return 'Por el momento solo entregamos dentro de México 🙏';
-    }
+  // Bloquear reinicio de extranjeros ya cerrados (salvo reset manual)
+  const redisClient = sessionManager.getRedisClient?.();
+  if (redisClient && !RESET_PATTERNS.test(messageBody.trim())) {
+    try {
+      const yaExtranjero = await redisClient.get(`extranjero:${phone}`);
+      if (yaExtranjero) {
+        return 'Por el momento solo entregamos dentro de México 🙏 Si en algún momento tienes una dirección mexicana, con gusto te ayudamos 🌾';
+      }
+    } catch { /* ignorar errores de Redis */ }
   }
 
   let session = await sessionManager.getSession(phone);
@@ -1049,6 +1051,22 @@ async function handleActive(phone, message, session) {
     }
   }
 
+  // Detectar número suelto como posible cantidad de animales
+  const soloNumero = /^\d+$/.test(message.trim());
+  if (soloNumero && session.conversationHistory.length > 2) {
+    const cantidad = parseInt(message.trim());
+    const ultimoBot = session.conversationHistory
+      .filter(m => m.role === 'assistant')
+      .slice(-1)[0]?.content || '';
+    const tieneProducto = ultimoBot.includes('llabanaenlinea.com');
+
+    if (tieneProducto && cantidad > 0 && cantidad < 10000) {
+      await sessionManager.updateSession(phone, {
+        tempData: { ...session.tempData, cantidadAnimales: cantidad },
+      });
+    }
+  }
+
   // Conversación con Claude
   // (el mensaje ya fue agregado al historial antes de los checks de escalación)
 
@@ -1390,6 +1408,10 @@ async function handleEscalated(phone, message, session) {
     .filter(m => !m.content?.includes('ESCALAR_A_WIG') && !m.content?.includes('Antes de conectarte'))
     .slice(-6);
 
+  historialLimpio.push({
+    role: 'user',
+    content: `[CONTEXTO: Horario de atención con asesor: L-V 8am-5pm, Sáb 9am-2pm. No inventes otros horarios.]`,
+  });
   historialLimpio.push({ role: 'user', content: message });
 
   let response;
@@ -1606,25 +1628,20 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
 
   // ── Dentro de horario — notificar normal ───────────────────
   const telMostrar = phone.replace('whatsapp:', '');
-  const esUrgente = motivo.includes('URGENTE') || motivo.includes('frustrado') || motivo.includes('urgente');
-  const ultimoMensajeCliente = (session.conversationHistory || [])
-    .filter(m => m.role === 'user').slice(-1)[0]?.content?.substring(0, 80) || 'Sin mensaje';
+  const esUrgente = (motivo || '').toUpperCase().includes('URGENTE') ||
+                    (motivo || '').includes('frustrado') ||
+                    (motivo || '').includes('renotificación');
 
   const msg = esUrgente
-    ? `🚨🚨🚨 *URGENTE — CLIENTE SIN ATENDER*\n\n` +
-      `👤 ${nombre}\n` +
-      `📱 ${telMostrar}\n` +
-      `⏰ ${motivo}\n` +
-      `💬 "${ultimoMensajeCliente}"\n\n` +
-      `*Responde a este número AHORA* 👆`
-    : `🚨 *ESCALACIÓN*\n\n` +
-      `📱 Tel:      ${telMostrar}\n` +
-      `👤 Nombre:   ${nombre}\n` +
-      `📍 Estado:   ${customer.state || tempData.state || 'N/D'}\n` +
-      `🏙️ Ciudad:  ${customer.city  || tempData.city  || 'N/D'}\n` +
-      `💬 Consulta: ${tempData.intent || customer.segmento || 'N/D'}\n` +
-      `📌 Motivo:   ${motivo}\n\n` +
-      `*Conversación:*\n${transcript}`;
+    ? `🚨🚨🚨 *URGENTE — ATENDER AHORA*\n\n` +
+      `👤 *${nombre}* | ${telMostrar}\n` +
+      (ubicacion ? `📍 ${ubicacion}\n` : '') +
+      `⚠️ ${resumenLimpio}\n\n` +
+      `*Escribe a este número AHORA 👆*`
+    : `🚨 *NUEVA SOLICITUD*\n\n` +
+      `👤 *${nombre}* | ${telMostrar}\n` +
+      (ubicacion ? `📍 ${ubicacion}\n` : '') +
+      (resumenLimpio ? `📝 ${resumenLimpio}` : '');
 
   console.log(`📤 Intentando notificar a Wig | to: ${wigNumber} | motivo: ${motivo}`);
   try {

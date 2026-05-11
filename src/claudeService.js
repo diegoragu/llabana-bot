@@ -139,7 +139,7 @@ es casi siempre la última duda antes de comprar.
 
 ━━━ HORARIO ━━━
 Si preguntan horario:
-"Atendemos lunes a viernes 9am-5pm y sábados 9am-2pm 🕘"
+"Atendemos lunes a viernes 8am-5pm y sábados 9am-2pm 🕘"
 
 ━━━ PRODUCTOS NO ENCONTRADOS ━━━
 Si el cliente menciona un producto:
@@ -282,6 +282,7 @@ async function chat(history, customer) {
         ? `Tags:     ${customer.tags}` : '',
       customer.totalOrders && customer.totalOrders !== '0'
         ? `Órdenes:  ${customer.totalOrders}` : '',
+      `Horario asesor: L-V 8am-5pm | Sáb 9am-2pm — NUNCA mencionar otro horario`,
       `━━━━━━━━━━━━━━━`,
     ].filter(Boolean);
 
