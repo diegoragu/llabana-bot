@@ -1165,11 +1165,15 @@ async function handleActive(phone, message, session) {
 
     // Si no tiene CP → pedirlo antes de escalar
     if (!cpGuardado) {
+      const cantidadActual = session.tempData?.cantidadBultos || 0;
+      const mensajeCP = cantidadActual >= 11 && cantidadActual < 500
+        ? `¿Cuál es tu código postal? 📍 Para ${cantidadActual} bultos, si estás en CDMX o Estado de México tenemos opciones de entrega directa 🚚`
+        : '¿Cuál es tu código postal? 📍 Con eso te digo exactamente cómo te lo hacemos llegar.';
       sessionManager.updateSession(phone, {
         flowState: 'asking_cp_before_escalation',
         tempData: { ...session.tempData, pendingEscalation: true },
       });
-      return '¿Cuál es tu código postal? 📍 Con eso te digo si te atendemos por paquetería o con un asesor directo.';
+      return mensajeCP;
     }
 
     // Ya tiene CP → usarlo directamente
