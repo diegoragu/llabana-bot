@@ -98,6 +98,23 @@ function dentroDeHorario() {
   return hora >= 9 && hora < 21;
 }
 
+function dentroDeHorarioFollowUpA() {
+  const ahora = new Date();
+  const hora = parseInt(ahora.toLocaleString('en-US', {
+    timeZone: 'America/Mexico_City',
+    hour: 'numeric',
+    hour12: false,
+  }));
+  const dia = ahora.toLocaleString('es-MX', {
+    timeZone: 'America/Mexico_City',
+    weekday: 'long',
+  });
+
+  if (dia === 'domingo') return false;
+  if (dia === 'sábado') return hora >= 9 && hora < 14;
+  return hora >= 9 && hora < 19; // L-V solo hasta 7pm
+}
+
 // ── Enviar y registrar ────────────────────────────────────────────────────────
 
 async function enviarFollowUp(phone, mensaje, nombre, tipo, flowState) {
@@ -159,7 +176,8 @@ async function runFollowUps() {
       // ── Follow-up A — cliente activo 2h sin respuesta ──────────────────────
       if (ESTADOS_ACTIVO.has(session.flowState) &&
           !ESTADOS_ESCALADO.has(session.flowState) &&
-          inactivo >= DOS_HORAS) {
+          inactivo >= DOS_HORAS &&
+          dentroDeHorarioFollowUpA()) {
         const keyA = `followup:A:${phone}`;
         if (!(await yaEnviado(keyA))) {
           const mensaje = buildFollowUpA(nombre, session);

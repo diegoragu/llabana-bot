@@ -1697,20 +1697,29 @@ async function handleConfirmingName(phone, message, session) {
   }
 
   if (nombreNuevo) {
-    // El cliente dio un nombre diferente — usar el nuevo
-    const first = primerNombre(nombreNuevo);
+    const namePendiente = session.tempData?.namePendiente || '';
+    const palabrasPendiente = namePendiente.split(' ').filter(Boolean);
+    const palabrasNuevo = nombreNuevo.split(' ').filter(Boolean);
+
+    // Si el pendiente tiene 2+ palabras y el nuevo tiene 1 sola →
+    // probablemente está corrigiendo solo el apellido
+    let nombreFinal = nombreNuevo;
+    if (palabrasPendiente.length >= 2 && palabrasNuevo.length === 1) {
+      nombreFinal = `${palabrasPendiente[0]} ${palabrasNuevo[0]}`;
+    }
+
+    const first = primerNombre(nombreFinal);
     if (session.customer?.rowIndex) {
-      sheetsService.updateOrderData(session.customer.rowIndex, { name: nombreNuevo }).catch(() => {});
+      sheetsService.updateOrderData(session.customer.rowIndex, { name: nombreFinal }).catch(() => {});
     }
     await sessionManager.updateSession(phone, {
       flowState: 'active',
-      tempData:  { ...session.tempData, name: nombreNuevo, namePendiente: undefined },
-      customer:  { ...session.customer, name: nombreNuevo },
+      tempData:  { ...session.tempData, name: nombreFinal, namePendiente: undefined },
+      customer:  { ...session.customer, name: nombreFinal },
     });
 
     const intentPrevio = session.tempData?.intentPrevio;
     if (intentPrevio) {
-      // Limpiar intentPrevio ANTES de llamar a handleActive para evitar loops
       await sessionManager.updateSession(phone, {
         tempData: { ...session.tempData, intentPrevio: undefined, namePendiente: undefined },
       });
