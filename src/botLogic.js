@@ -338,10 +338,10 @@ async function handleMessage(phone, messageBody) {
       // para evitar que Claude vuelva a detectar escalación y genere loop
       const msg = messageBody.trim().toLowerCase();
 
-      // Detectar frustración acumulada — escalar con urgencia
+      // Detectar frustración acumulada — siempre renotificar a Wig con urgencia
       const esFrustradoEsperando = /muchas\s+veces|varias\s+veces|ya\s+llevo|cuándo|cuando\s+me|nadie\s+me|siguen\s+sin|no\s+me\s+han|no\s+han|días\s+(esperando|sin)|horas\s+esperando/i.test(messageBody);
       if (esFrustradoEsperando) {
-        await notifyWig(phone, session, `🚨 Cliente muy frustrado por espera: "${messageBody.substring(0, 100)}"`);
+        await notifyWig(phone, session, `🚨 URGENTE — Cliente muy frustrado por espera (renotificación): "${messageBody.substring(0, 100)}"`);
         return `Lamento mucho la espera, eso no está bien 😔 Acabo de marcar tu caso como urgente para que te atiendan lo antes posible. Entiendo tu frustración y mereces una respuesta rápida 🙏`;
       }
 
@@ -1358,7 +1358,14 @@ async function handleEscalated(phone, message, session) {
     return 'Ya avisé al asesor, en breve te contacta 🙌 ¿Hay algo en lo que pueda ayudarte mientras tanto?';
   }
 
-  // Detección de frustración — responder con urgencia antes de cualquier otra lógica
+  // Detección de frustración acumulada — siempre renotificar a Wig
+  const esFrustradoEsperando = /muchas\s+veces|varias\s+veces|ya\s+llevo|cuándo|cuando\s+me|nadie\s+me|siguen\s+sin|no\s+me\s+han|no\s+han|d[ií]as?\s+(esperando|sin)|horas\s+esperando|no\s+me\s+contactan|no\s+han\s+llamado/i.test(message);
+  if (esFrustradoEsperando) {
+    await notifyWig(phone, session, `🚨 URGENTE — Cliente frustrado por espera (renotificación): "${message.substring(0, 100)}"`);
+    return `Lamento mucho la espera 😔 Acabo de reenviar tu caso como urgente. Mereces una respuesta rápida y me aseguro de que te atiendan 🙏`;
+  }
+
+  // Detección de frustración genérica — responder con urgencia antes de cualquier otra lógica
   const esFrustrado = /SIGO|TODAVÍA|AÚN NO|SIGUEN|YA PASARON|CUÁNDO|NO HAN|POR QUÉ|!!|😤|😡|🤬/.test(message)
     || message === message.toUpperCase() && message.trim().length > 5;
 
@@ -1599,11 +1606,25 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
 
   // ── Dentro de horario — notificar normal ───────────────────
   const telMostrar = phone.replace('whatsapp:', '');
-  const msg =
-    `🚨 *NUEVA SOLICITUD*\n\n` +
-    `👤 *${nombre}* | ${telMostrar}\n` +
-    (ubicacion ? `📍 ${ubicacion}\n` : '') +
-    (resumenLimpio ? `📝 ${resumenLimpio}` : '');
+  const esUrgente = motivo.includes('URGENTE') || motivo.includes('frustrado') || motivo.includes('urgente');
+  const ultimoMensajeCliente = (session.conversationHistory || [])
+    .filter(m => m.role === 'user').slice(-1)[0]?.content?.substring(0, 80) || 'Sin mensaje';
+
+  const msg = esUrgente
+    ? `🚨🚨🚨 *URGENTE — CLIENTE SIN ATENDER*\n\n` +
+      `👤 ${nombre}\n` +
+      `📱 ${telMostrar}\n` +
+      `⏰ ${motivo}\n` +
+      `💬 "${ultimoMensajeCliente}"\n\n` +
+      `*Responde a este número AHORA* 👆`
+    : `🚨 *ESCALACIÓN*\n\n` +
+      `📱 Tel:      ${telMostrar}\n` +
+      `👤 Nombre:   ${nombre}\n` +
+      `📍 Estado:   ${customer.state || tempData.state || 'N/D'}\n` +
+      `🏙️ Ciudad:  ${customer.city  || tempData.city  || 'N/D'}\n` +
+      `💬 Consulta: ${tempData.intent || customer.segmento || 'N/D'}\n` +
+      `📌 Motivo:   ${motivo}\n\n` +
+      `*Conversación:*\n${transcript}`;
 
   console.log(`📤 Intentando notificar a Wig | to: ${wigNumber} | motivo: ${motivo}`);
   try {

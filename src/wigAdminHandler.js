@@ -16,6 +16,9 @@ const AYUDA = `*Comandos Llabana Bot* 🤖
 */nocontesta* +521XXXXXXXXXX
 → Cliente no contestó
 
+*/atendido* +521XXXXXXXXXX
+→ Marcar cliente como atendido y limpiar su sesión
+
 */ayuda*
 → Ver esta lista`;
 
@@ -171,6 +174,32 @@ async function handleWigCommand(body) {
 
     console.log(`🔧 [WIG-ADMIN] /nocontesta | ${nombre} | ${phone}`);
     return `📵 Listo — *${nombre}* marcado como No Contestó y guardado en Seguimientos.`;
+  }
+
+  // Parsear /atendido +521...
+  const matchAtendido = texto.match(/^\/atendido\s+(\S+)$/i);
+  if (matchAtendido) {
+    const phone = normalizePhoneForSearch(matchAtendido[1]);
+    if (!phone) return `❌ Número inválido: ${matchAtendido[1]}`;
+
+    const cliente = await sheetsService.findCustomer(phone);
+    if (!cliente) {
+      return `❌ No encontré ese número en la base de datos.`;
+    }
+
+    const nombre = cliente.name || matchAtendido[1];
+    const ahora  = new Date().toLocaleDateString('sv-SE', {
+      timeZone: 'America/Mexico_City'
+    });
+
+    await sheetsService.updateOrderData(cliente.rowIndex, {
+      notas: `${cliente.notas || ''} | ${ahora}: Atendido por asesor`.trim(),
+    });
+    await sessionManager.deleteSession(`whatsapp:+521${phone.replace(/\D/g, '').slice(-10)}`);
+    await sessionManager.deleteSession(`whatsapp:+52${phone.replace(/\D/g, '').slice(-10)}`);
+
+    console.log(`🔧 [WIG-ADMIN] /atendido | ${nombre} | ${phone}`);
+    return `✅ Listo — *${nombre}* marcado como atendido. Sesión limpiada.`;
   }
 
   // Comando no reconocido
