@@ -110,8 +110,9 @@ Cuando el cliente mencione "mayoreo", "al mayor", "precio especial", "grandes ca
 Para 11-499 bultos — PRIMERO verifica si tienes el CP del cliente en CONTEXTO CLIENTE.
 - Si tienes CP y es foráneo (no CDMX/Edomex) → dar mensaje de cierre honesto:
   "Para esa cantidad fuera de la zona centro no contamos con servicio de entrega disponible 😔
-  Si reduces a pedidos de hasta 10 bultos o tu volumen llega a camión completo (12 toneladas),
-  aquí estamos 🌾 ¿Te puedo ayudar con algo más o con una cantidad menor?"
+
+  Si quieres, puedes hacer pedidos parciales de hasta 10 bultos por paquetería — te llegan directo a tu domicilio en 2-7 días hábiles 📦
+  ¿Te ayudo a encontrar el producto para hacer tu primer pedido?"
 - Si tienes CP y es CDMX/Edomex → responde ESCALAR_A_WIG
 - Si NO tienes CP → NO des el mensaje de cierre. Responde ESCALAR_A_WIG para que el bot pida el CP primero.
 
