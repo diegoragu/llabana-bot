@@ -496,7 +496,8 @@ async function handleAskingMexico(phone, message, session) {
   }
 
   // Detectar estado/ciudad mexicana → saltar confirmación de México
-  if (detectarUbicacionMX(message)) {
+  // Si es zona local, dejar que caiga al check de mencionaZonaLocal (línea ~551)
+  if (detectarUbicacionMX(message) && !mencionaZonaLocal(message)) {
     const nombreDetectado = extraerNombreDelMensaje(message);
     const nombreLimpio = nombreDetectado ? sheetsService.limpiarNombre(nombreDetectado) : null;
 
@@ -597,8 +598,10 @@ async function handleAskingMexico(phone, message, session) {
         flowState: 'active',
         tempData:  { ...session.tempData, escalacionPendiente: true },
       });
-      const msgs = horarioService.mensajeFueraHorario();
-      return msgs[Math.floor(Math.random() * msgs.length)];
+      const firstName = primerNombre(session.tempData?.name || '');
+      return firstName
+        ? `¡Perfecto, ${firstName}! Tu zona tiene opciones de entrega directa 🚚\nNuestros asesores te contactarán mañana a primera hora para coordinar la entrega. ¿Puedo ayudarte con algo más mientras tanto?`
+        : `¡Perfecto! Tu zona tiene opciones de entrega directa 🚚\nNuestros asesores te contactarán mañana a primera hora para coordinar la entrega. ¿Puedo ayudarte con algo más mientras tanto?`;
     }
 
     await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
