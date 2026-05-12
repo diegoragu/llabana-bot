@@ -1018,8 +1018,10 @@ async function handleActive(phone, message, session) {
           flowState: 'active',
           tempData:  { ...session.tempData, escalacionPendiente: true },
         });
-        const msgs = horarioService.mensajeFueraHorario();
-        return msgs[Math.floor(Math.random() * msgs.length)];
+        const firstName = primerNombre(session.customer?.name || '');
+        return firstName
+          ? `¡Perfecto, ${firstName}! Tu zona tiene opciones de entrega directa 🚚\nNuestros asesores te contactarán mañana a primera hora para coordinar la entrega. ¿Puedo ayudarte con algo más mientras tanto?`
+          : `¡Perfecto! Tu zona tiene opciones de entrega directa 🚚\nNuestros asesores te contactarán mañana a primera hora para coordinar la entrega. ¿Puedo ayudarte con algo más mientras tanto?`;
       }
 
       await sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
