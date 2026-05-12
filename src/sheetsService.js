@@ -176,7 +176,7 @@ function limpiarNombre(nombre) {
   if (/^(de|del|la|el|los|las|un|una)$/i.test(n.split(' ')[0])) return '';
 
   // Contiene palabras que no son nombres
-  const nonName = /\b(hola|buenos?\s*d[ií]as?|buenas?\s*(tardes?|noches?)|quiero|precio|info(rmaci[oó]n)?|cu[aá]nto|c[oó]mo|gracias|tengo|busco|necesito|vendo|compro|vivo|soy\s+de|soy\s+un|mucho\s+gusto|un\s+placer|encantado|encantada|me\s+llamo|mi\s+nombre\s+es)\b/i;
+  const nonName = /\b(hola|buenos?\s*d[ií]as?|buenas?\s*(tardes?|noches?)|quiero|precio|info(rmaci[oó]n)?|cu[aá]nto|c[oó]mo|gracias|tengo|busco|necesito|vendo|compro|vivo|soy\s+de|soy\s+un|mucho\s+gusto|un\s+placer|encantado|encantada|me\s+llamo|mi\s+nombre\s+es|croquetas?|alimento|cachorro|adulto|perro|gato|pollo|cerdo|ganado|vacas?|borrego|conejo|peces?|tilapia|codornices?)\b/i;
   if (nonName.test(n)) return '';
 
   // Cortar en palabras de cortesía que no son parte del nombre

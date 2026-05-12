@@ -341,7 +341,7 @@ async function handleMessage(phone, messageBody) {
       const msg = messageBody.trim().toLowerCase();
 
       // Detectar frustración acumulada — siempre renotificar a Wig con urgencia
-      const esFrustradoEsperando = /muchas\s+veces|varias\s+veces|ya\s+llevo|cuándo|cuando\s+me|nadie\s+me|siguen\s+sin|no\s+me\s+han|no\s+han|días\s+(esperando|sin)|horas\s+esperando/i.test(messageBody);
+      const esFrustradoEsperando = /muchas\s+veces|varias\s+veces|ya\s+llevo|cuándo|cuando\s+me|nadie\s+me|siguen\s+sin|no\s+me\s+han|no\s+han|d[ií]as?\s+(esperando|sin)|horas\s+esperando|estoy\s+esperando|sigo\s+esperando|llevo\s+esperando|no\s+me\s+contactan|sin\s+respuesta|no\s+hay\s+respuesta/i.test(messageBody);
       if (esFrustradoEsperando) {
         await notifyWig(phone, session, `🚨 URGENTE — Cliente muy frustrado por espera (renotificación): "${messageBody.substring(0, 100)}"`);
         return `Lamento mucho la espera, eso no está bien 😔 Acabo de marcar tu caso como urgente para que te atiendan lo antes posible. Entiendo tu frustración y mereces una respuesta rápida 🙏`;
