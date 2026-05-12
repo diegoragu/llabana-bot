@@ -369,7 +369,7 @@ async function chat(history, customer) {
 
   const response = await client.messages.create({
     model:      'claude-sonnet-4-6',
-    max_tokens: 800,
+    max_tokens: 1024,
     system,
     messages:   recentHistory,
   });
