@@ -1132,12 +1132,6 @@ async function handleActive(phone, message, session) {
     }
   }
 
-  // Problema con la tienda / página web
-  const esProblemaTienda = /p[aá]gina.*(no\s+carga|no\s+abre|no\s+funciona|tiene\s+problemas|ca[íi]d[ao]?|error|no\s+me\s+deja)|tienda.*(no\s+funciona|ca[íi]d[ao]?|error|problemas)/i.test(message);
-  if (esProblemaTienda) {
-    return `Disculpa el inconveniente 😔 En este momento nuestra tienda está siendo actualizada — en breve estará disponible de nuevo.\n\nSi quieres, puedo ayudarte a encontrar el producto que buscas para que lo tengas listo cuando vuelva la tienda 🛒`;
-  }
-
   // Conversación con Claude
   // (el mensaje ya fue agregado al historial antes de los checks de escalación)
 
