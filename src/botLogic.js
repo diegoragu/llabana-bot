@@ -300,8 +300,18 @@ async function handleMessage(phone, messageBody) {
     case 'waiting_for_wig': {
       // Detectar respuesta al Follow-up C
       if (session.tempData?.followupCEnviado) {
-        const noFueAtendido = /no\b|nadie|nunca|todavía|aún no|siguen sin|no me han/i.test(messageBody);
-        const sisFueAtendido = /^(sí|si|ya|me atendieron|perfecto|listo|ok|claro)$/i.test(messageBody.trim().toLowerCase());
+        // Verificar primero si FUE atendido (tiene prioridad sobre el no)
+        const sisFueAtendido = /^(sí|si|ya|me atendieron|perfecto|listo|ok|claro)$/i.test(messageBody.trim().toLowerCase())
+          || /\bya\s+me\s+atendi[oó]\b/i.test(messageBody)
+          || /\bme\s+contact[oó]\b/i.test(messageBody)
+          || /\bya\s+me\s+llam[oó]\b/i.test(messageBody)
+          || /\bya\s+fui\s+atendid[oa]\b/i.test(messageBody);
+
+        // Solo verificar noFueAtendido si NO fue atendido
+        const noFueAtendido = !sisFueAtendido && (
+          /no\b.*\b(atendi[oó]|contact[oó]|llam[oó]|respuest)/i.test(messageBody) ||
+          /nadie|nunca|todavía|aún no|siguen sin|no me han|no\s+he\s+tenido/i.test(messageBody)
+        );
         if (noFueAtendido) {
           await notifyWig(phone, session, '🚨 URGENTE — Cliente sin atención después de 23h');
           await sessionManager.updateSession(phone, {
@@ -1122,6 +1132,12 @@ async function handleActive(phone, message, session) {
     }
   }
 
+  // Problema con la tienda / página web
+  const esProblemaTienda = /p[aá]gina.*(no\s+carga|no\s+abre|no\s+funciona|tiene\s+problemas|ca[íi]d[ao]?|error|no\s+me\s+deja)|tienda.*(no\s+funciona|ca[íi]d[ao]?|error|problemas)/i.test(message);
+  if (esProblemaTienda) {
+    return `Disculpa el inconveniente 😔 En este momento nuestra tienda está siendo actualizada — en breve estará disponible de nuevo.\n\nSi quieres, puedo ayudarte a encontrar el producto que buscas para que lo tengas listo cuando vuelva la tienda 🛒`;
+  }
+
   // Conversación con Claude
   // (el mensaje ya fue agregado al historial antes de los checks de escalación)
 
@@ -1424,8 +1440,18 @@ async function handleWaitingForWig(phone, message, session) {
 async function handleEscalated(phone, message, session) {
   // Detectar respuesta al Follow-up C
   if (session.tempData?.followupCEnviado) {
-    const noFueAtendido = /no\b|nadie|nunca|todavía|aún no|siguen sin|no me han/i.test(message);
-    const sisFueAtendido = /^(sí|si|ya|me atendieron|perfecto|listo|ok|claro)$/i.test(message.trim().toLowerCase());
+    // Verificar primero si FUE atendido (tiene prioridad sobre el no)
+    const sisFueAtendido = /^(sí|si|ya|me atendieron|perfecto|listo|ok|claro)$/i.test(message.trim().toLowerCase())
+      || /\bya\s+me\s+atendi[oó]\b/i.test(message)
+      || /\bme\s+contact[oó]\b/i.test(message)
+      || /\bya\s+me\s+llam[oó]\b/i.test(message)
+      || /\bya\s+fui\s+atendid[oa]\b/i.test(message);
+
+    // Solo verificar noFueAtendido si NO fue atendido
+    const noFueAtendido = !sisFueAtendido && (
+      /no\b.*\b(atendi[oó]|contact[oó]|llam[oó]|respuest)/i.test(message) ||
+      /nadie|nunca|todavía|aún no|siguen sin|no me han|no\s+he\s+tenido/i.test(message)
+    );
     if (noFueAtendido) {
       await notifyWig(phone, session, '🚨 URGENTE — Cliente sin atención después de 23h');
       await sessionManager.updateSession(phone, {
@@ -1728,13 +1754,16 @@ async function notifyWig(phone, session, motivo = '', resumen = '') {
   }
 }
 
-async function handleMediaMessage(phone) {
+async function handleMediaMessage(phone, mediaType = '') {
   const session = await sessionManager.getSession(phone);
+  const nombre = session?.customer?.name ? ` ${primerNombre(session.customer.name)}` : '';
+
+  const esPDF = /pdf|document/i.test(mediaType);
+  if (esPDF) {
+    return `No puedo abrir archivos PDF${nombre} 😅 ¿Me puedes escribir la lista de productos que necesitas? Con gusto te ayudo a cotizar todo 📋`;
+  }
 
   if (session?.flowState === 'active' || session?.flowState === 'waiting_for_wig') {
-    const nombre = session?.customer?.name
-      ? ` ${primerNombre(session.customer.name)}`
-      : '';
     return `Vi que mandaste una imagen${nombre} 😊 Por el momento no puedo verla, pero cuéntame — ¿qué producto o tema te interesa? Con gusto te ayudo 🌾`;
   }
 

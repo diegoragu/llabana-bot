@@ -134,7 +134,7 @@ async function webhookHandler(req, res) {
     const mediaType = req.body?.MediaContentType0 || 'archivo';
     console.log(`📎 Mensaje multimedia de ${from}: ${mediaType}`);
     try {
-      const replyMedia = await botLogic.handleMediaMessage(from);
+      const replyMedia = await botLogic.handleMediaMessage(from, req.body?.MediaContentType0 || '');
       await twilioService.sendMessage(from, replyMedia);
     } catch (err) {
       console.error(`❌ Error procesando multimedia de ${from}:`, err.message);
