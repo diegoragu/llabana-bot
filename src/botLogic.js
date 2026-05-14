@@ -616,6 +616,21 @@ async function handleAskingMexico(phone, message, session) {
     const motivoLocal = esSucursal
       ? `Zona local (${stateDetectado}) — ES SUCURSAL/DISTRIBUIDOR: "${message.substring(0, 80)}"`
       : `Zona local detectada por texto: "${message.substring(0, 80)}"`;
+
+    const nombreActual = session.tempData?.name || session.customer?.name || '';
+    if (!nombreActual) {
+      await sessionManager.updateSession(phone, {
+        flowState: 'asking_name',
+        tempData: {
+          ...session.tempData,
+          nameAttempts: 0,
+          escalacionPendienteZonaLocal: true,
+          motivoEscalacion: motivoLocal,
+        },
+      });
+      return '¿Con quién tengo el gusto? 😊 Un asesor te contactará en breve.';
+    }
+
     const { fueraHorario: fueraH2 } = await notifyWig(
       phone,
       sessionLocal || { ...session, customer: customerLocal },
@@ -834,6 +849,27 @@ async function handleAskingName(phone, message, session) {
         tempData:  { ...session.tempData, name: nombre, nameAttempts: 0 },
         customer:  { ...session.customer, name: nombre },
       });
+
+      // Ejecutar escalación pendiente si la hay
+      if (session.tempData?.escalacionPendienteZonaLocal ||
+          session.tempData?.escalacionPendienteMayoreo ||
+          session.tempData?.escalacionPendienteHumano) {
+        const motivo = session.tempData?.motivoEscalacion || 'Cliente solicitó asesor';
+        await notifyWig(phone, { ...session, tempData: { ...session.tempData, name: nombre } }, motivo);
+        await sessionManager.updateSession(phone, {
+          flowState: 'waiting_for_wig',
+          tempData: {
+            ...session.tempData,
+            name: nombre,
+            escalacionPendienteZonaLocal: undefined,
+            escalacionPendienteMayoreo: undefined,
+            escalacionPendienteHumano: undefined,
+            motivoEscalacion: undefined,
+          },
+        });
+        return `¡Mucho gusto, ${first}! 😊 Un asesor te contactará en breve por este WhatsApp 🙌`;
+      }
+
       const intentPrevio = session.tempData?.intentPrevio;
       if (intentPrevio) {
         await sessionManager.updateSession(phone, {
@@ -965,11 +1001,33 @@ async function handleActive(phone, message, session) {
 
   // Solicitud de asesor humano
   if (isRequestingHuman(message)) {
-    return escalateWithResumen(phone, session, 'Cliente solicita asesor humano');
+    const nombreActual = session.tempData?.name || session.customer?.name || '';
+    if (!nombreActual) {
+      await sessionManager.updateSession(phone, {
+        flowState: 'asking_name',
+        tempData: { ...session.tempData, nameAttempts: 0, escalacionPendienteHumano: true },
+      });
+      return '¿Con quién tengo el gusto? 😊 En seguida te conecto con un asesor.';
+    }
+    await notifyWig(phone, session, `Cliente solicita asesor: "${message.substring(0, 80)}"`);
+    sessionManager.updateSession(phone, { flowState: 'waiting_for_wig' });
+    return 'Ahorita te conecto con un asesor 🙌';
   }
 
   // Escalación por perfil (mayoreo, negocio, etc.)
   if (isEscalationProfile(message)) {
+    const nombreActual = session.tempData?.name || session.customer?.name || '';
+    if (!nombreActual && session.flowState !== 'active') {
+      await sessionManager.updateSession(phone, {
+        flowState: 'asking_name',
+        tempData: {
+          ...session.tempData,
+          nameAttempts: 0,
+          escalacionPendienteMayoreo: true,
+        },
+      });
+      return '¿Con quién tengo el gusto? 😊 En seguida te conecto con un asesor.';
+    }
     return escalateWithResumen(phone, session,
       `Perfil mayoreo/negocio: "${message.substring(0, 80)}"`);
   }
@@ -1812,6 +1870,26 @@ async function handleConfirmingName(phone, message, session) {
       tempData:  { ...session.tempData, name: nombre, namePendiente: undefined },
       customer:  { ...session.customer, name: nombre },
     });
+
+    // Ejecutar escalación pendiente si la hay
+    if (session.tempData?.escalacionPendienteZonaLocal ||
+        session.tempData?.escalacionPendienteMayoreo ||
+        session.tempData?.escalacionPendienteHumano) {
+      const motivo = session.tempData?.motivoEscalacion || 'Cliente solicitó asesor';
+      await notifyWig(phone, { ...session, tempData: { ...session.tempData, name: nombre } }, motivo);
+      await sessionManager.updateSession(phone, {
+        flowState: 'waiting_for_wig',
+        tempData: {
+          ...session.tempData,
+          name: nombre,
+          escalacionPendienteZonaLocal: undefined,
+          escalacionPendienteMayoreo: undefined,
+          escalacionPendienteHumano: undefined,
+          motivoEscalacion: undefined,
+        },
+      });
+      return `¡Mucho gusto, ${first}! 😊 Un asesor te contactará en breve por este WhatsApp 🙌`;
+    }
 
     const intentPrevio = session.tempData?.intentPrevio;
     if (intentPrevio) {
