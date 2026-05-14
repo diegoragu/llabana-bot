@@ -364,6 +364,17 @@ async function handleMessage(phone, messageBody) {
       }
 
       // Cualquier otra consulta real — atender con Claude pero sin detección de escalación
+
+      // Guardar info útil del cliente en notas antes de responder
+      const tieneInfoUtil = messageBody.trim().length > 20 &&
+        !/^(gracias|ok|okay|si|sí|no|perfecto|listo|bien|claro|👍|🙌)$/i.test(messageBody.trim());
+
+      if (tieneInfoUtil && session.customer?.rowIndex) {
+        sheetsService.appendNota(session.customer.rowIndex,
+          `Info adicional del cliente: ${messageBody.trim().substring(0, 200)}`
+        ).catch(() => {});
+      }
+
       session.conversationHistory.push({ role: 'user', content: messageBody });
       let response;
       try {
@@ -462,6 +473,15 @@ async function handleAskingEntregaMx(phone, message, session) {
       tempData: { ...session.tempData, entregaMxIntentos: intentos },
     });
     return 'Nosotros entregamos a cualquier dirección dentro de México 📦 Desde ahí puedes llevarlo a donde necesites — el envío internacional corre por tu cuenta.\n\n¿Tienes alguna dirección en México donde podamos enviarte el pedido?';
+  }
+
+  // Si el cliente hace una pregunta de producto en lugar de responder sí/no
+  const preguntaProducto = message.trim().length > 5 &&
+    !esSi && !esNo &&
+    /\b(tienen?|venden?|manejan?|hay|exist[e]?)\b/i.test(message);
+
+  if (preguntaProducto) {
+    return `Sí, manejamos alimento para todas las especies 🌾 Para enviártelo necesitamos una dirección en México — ¿cuentas con una? 📦`;
   }
 
   if (esSi) {
