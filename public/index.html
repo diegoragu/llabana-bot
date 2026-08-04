@@ -8,7 +8,7 @@
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --green:    #2E7D32;
+  --green:    #78AE5B;
   --green-d:  #1B5E20;
   --green-l:  #43A047;
   --green-p:  #F1F8F1;
@@ -31,13 +31,14 @@
 }
 body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; }
 .topbar {
-  background: var(--green-d);
+  background: #10365C;
   padding: 0 20px; height: 52px;
   display: flex; align-items: center; justify-content: space-between;
   position: sticky; top: 0; z-index: 10;
 }
 .topbar-brand { display: flex; align-items: center; gap: 10px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #8BC34A; box-shadow: 0 0 0 2px rgba(139,195,74,.3); animation: pulse 2s infinite; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #78AE5B; box-shadow: 0 0 0 2px rgba(120,174,91,.35); animation: pulse 2s infinite; }
+.topbar-logo { height: 26px; width: auto; background: #fff; padding: 4px 8px; border-radius: 6px; display: block; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
 .brand-name { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; color: rgba(255,255,255,.9); font-weight: 600; }
 .topbar-right { display: flex; align-items: center; gap: 8px; }
@@ -52,7 +53,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .pl-filters { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 .filter-btn { font-size: 11px; padding: 3px 9px; border-radius: 20px; border: 1px solid var(--border); background: none; cursor: pointer; font-family: var(--sans); color: var(--muted); transition: all .15s; white-space: nowrap; }
 .filter-btn:hover { border-color: var(--green); color: var(--green); }
-.filter-btn.active { background: var(--green); color: white; border-color: var(--green); }
+.filter-btn.active { background: var(--green); color: #10365C; font-weight: 600; border-color: var(--green); }
 .conv-list { overflow-y: auto; flex: 1; }
 .conv-item { padding: 11px 14px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; }
 .conv-item:hover { background: var(--green-p); }
@@ -114,6 +115,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 
 <div class="topbar">
   <div class="topbar-brand">
+    <img class="topbar-logo" src="logo_lallosa.svg" alt="La Llosa">
     <div class="dot"></div>
     <span class="brand-name">LA LLOSA · CONVERSACIONES</span>
   </div>
