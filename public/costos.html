@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Costos del Bot · Llabana</title>
+<title>Costos del Bot · La Llosa</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
@@ -72,7 +72,7 @@ code{background:#f0e3d3;padding:1px 6px;border-radius:5px;font-size:12px;}
       <div class="mark"></div>
       <div>
         <h1>Costos del Bot de WhatsApp</h1>
-        <div class="sub">Comercializadora Llabana — gasto mensual en MXN (automático)</div>
+        <div class="sub">La Llosa — gasto mensual en MXN (automático)</div>
       </div>
     </div>
     <div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;">
@@ -234,7 +234,7 @@ function updateChart(){
 function exportJson(){
   const blob=new Blob([JSON.stringify(DATA,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='costos_bot_llabana.json'; a.click(); URL.revokeObjectURL(a.href);
+  a.download='costos_bot_la-llosa.json'; a.click(); URL.revokeObjectURL(a.href);
 }
 
 load();
